@@ -19,13 +19,6 @@ same command again to update. To uninstall:
 irm https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/main/uninstall.ps1 | iex
 ```
 
-**Browser (discord.com)**: either
-- with [Tampermonkey](https://www.tampermonkey.net/) installed, open
-  [`discord-video-unlock.user.js`](https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/main/browser/discord-video-unlock.user.js)
-  and click Install (always on, auto-updates); or
-- drag the bookmarklet from the [install page](https://jonasbpa.github.io/discord-video-unlock/) to the
-  bookmarks bar and click it on the Discord tab (no extension, once per page load).
-
 > **Risk.** The restriction comes from an ANPD order, and getting around it violates Discord's Terms of
 > Service; accounts can be suspended. The Windows variant uses a free public proxy by default: it sees
 > which hosts you connect to (not the TLS content) and it affects **all** of Windows' HTTP traffic for
@@ -33,17 +26,6 @@ irm https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/main/uninsta
 
 Based on the findings in
 [guilhermedecastrogt/unlock-screen-discord-brasil](https://github.com/guilhermedecastrogt/unlock-screen-discord-brasil).
-
-## Variants
-
-| | Windows (`desktop/`) | Browser (`browser/`) |
-|---|---|---|
-| Mechanism | System proxy outside Brazil **only while Discord boots** | Client-side experiment override (`2026-08-video-guard` → control bucket) |
-| Runs as | Hidden PowerShell watcher started at logon | Userscript, or bookmarklet |
-| Covers | Logon autostart, manual open, close & reopen, update restarts | Userscript: every load, reload, reconnect. Bookmarklet: until reload |
-| Does **not** cover | In-app reloads (`Ctrl+R`) and some reconnects | Experiment renames (update the constant) |
-
----
 
 ## Windows
 
@@ -113,39 +95,15 @@ binaries.
 
 ---
 
-## Browser
-
-No proxy here. Both browser variants apply Discord's own experiment override from the page:
-
-1. Get webpack's `require` by pushing a fake chunk into `webpackChunkdiscord_app` (no Vencord).
-2. Find the Flux dispatcher among the loaded modules.
-3. Dispatch `APEX_EXPERIMENT_SESSION_OVERRIDE_CREATE` for `2026-08-video-guard`, variant `0`, right
-   away and after every `CONNECTION_OPEN` (the experiment store is refilled when the gateway
-   authenticates).
-
-- `browser/discord-video-unlock.user.js`: runs at `document-start` on every load, waits for webpack.
-  `@updateURL` points at `main`, so managers update it automatically.
-- `browser/bookmarklet.js`: same logic for an already loaded page. `index.html` turns it into the
-  `javascript:` link at runtime, so this file is the only source.
-
-On Chrome/Edge (Manifest V3) Tampermonkey needs **Allow User Scripts** enabled in the extension's
-details page. If the button is still disabled after activation, leave and rejoin the voice channel. If
-the console warns that the experiment was not found, Discord renamed it: update `EXPERIMENT` in both
-files.
-
----
-
 ## Development
 
 ```powershell
 # desktop: parses every script, tests proxy backup/restore on a throwaway registry key, checks detection
 powershell -NoProfile -ExecutionPolicy Bypass -File desktop\tests\smoke.ps1
 
-# browser: runs the userscript and the bookmarklet against a fake webpack + Flux dispatcher (Node 20+)
-node --test "browser/tests/*.test.mjs"
 ```
 
-Neither touches your real proxy settings, Discord process or account. Running from a checkout instead of
+This never touches your real proxy settings, Discord process or account. Running from a checkout instead of
 the one-liner: `powershell -ExecutionPolicy Bypass -File desktop\install.ps1`.
 
 The install page is `index.html` at the repo root, served by GitHub Pages from `main` (`.nojekyll`

@@ -1,7 +1,7 @@
 # CLAUDE.md
 
-Re-enables Discord's video features restricted in Brazil (`2026-08-video-guard`). Two independent
-variants; see README.md for user-facing docs.
+Re-enables Discord's video features restricted in Brazil. The restriction is decided server-side from
+the IP seen at login; see README.md for user-facing docs.
 
 ## Layout
 
@@ -17,19 +17,14 @@ variants; see README.md for user-facing docs.
     (logon + install), `-Launch` opens it if closed (install only).
   - `install.ps1` / `uninstall.ps1` - HKCU Run entry via `conhost --headless`; replace/stop watcher.
   - `config.json` - proxy, builds, timings, toast text.
-- `browser/` - experiment override through webpack's require, re-applied on every `CONNECTION_OPEN`.
-  - `discord-video-unlock.user.js` - userscript; bump `@version` on every change (auto-update).
-  - `bookmarklet.js` - same logic for a loaded page; `index.html` builds the `javascript:` link from it.
-  - `tests/fake-discord.mjs` - shared fake webpack + Flux dispatcher.
 
 ## Commands
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File desktop\tests\smoke.ps1
-node --test "browser/tests/*.test.mjs"   # Node 24 needs a glob, not a folder
 ```
 
-Run both before committing. Neither may touch the real proxy settings, Discord or an account.
+Run before committing. Must not touch the real proxy settings, Discord or an account.
 
 ## Rules
 
@@ -39,15 +34,12 @@ Run both before committing. Neither may touch the real proxy settings, Discord o
   via `irm` (decoded as UTF-8) and print pt-BR. Never add a BOM to them (breaks `iex`).
 - Root bootstraps must stay self-contained (no dot-sourcing, no params) and wrap everything in `& { }`
   so `iex` does not leak variables into the user's session.
-- User-facing strings (toast, bootstrap output, install page, bookmarklet alerts) are pt-BR; code,
+- User-facing strings (toast, bootstrap output, install page) are pt-BR; code,
   comments, docs and commits are English. `desktop/` scripts only use `Write-Verbose`.
-- `bookmarklet.js`: block comments only, and the IIFE must evaluate to `undefined` (otherwise the
-  browser navigates to the result).
 - Never write to the real `Internet Settings` key in tests; module functions take `-KeyPath` and
   `-BackupPath` for that.
 - Desktop must never leave the proxy on: every enable goes through `Invoke-Bypass`'s `finally`, and an
   existing backup file is never overwritten (it is the only copy of the user's settings after a crash).
-- No runtime dependencies for the userscript (`@grant none`, page realm).
 
 ## Gotchas
 
@@ -61,7 +53,3 @@ Run both before committing. Neither may touch the real proxy settings, Discord o
 - A watcher killed by `Stop-DvuWatcher` abandons its mutex; the next one gets
   `AbandonedMutexException` from `WaitOne` and must treat it as acquired.
 - PowerShell `-f` binds tighter than `+`; parenthesize concatenated format strings.
-- Flux refuses a dispatch inside another dispatch; the userscript defers with `setTimeout`.
-- Objects from `vm.runInNewContext` have another `Object.prototype`; spread them before `deepEqual`.
-- If Discord renames the experiment, update `EXPERIMENT` in the userscript, the bookmarklet and the
-  README.
