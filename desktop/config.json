@@ -1,0 +1,15 @@
+{
+  "proxyServer": "181.39.25.196:8118",
+  "builds": ["Discord", "DiscordPTB", "DiscordCanary"],
+  "launchAtLogon": true,
+  "launchBuild": "Discord",
+  "startInactive": true,
+  "pollIntervalMs": 500,
+  "readyTimeoutSeconds": 120,
+  "settleSeconds": 3,
+  "toast": {
+    "enabled": true,
+    "title": "Bypass concluído!",
+    "body": "Vídeo e compartilhamento de tela liberados nesta sessão. Se recarregar o Discord (Ctrl+R), feche e abra de novo."
+  }
+}
