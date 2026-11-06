@@ -27,7 +27,7 @@ Check 'all scripts parse' {
 Import-Module (Join-Path $root 'src\DiscordVideoUnlock.psm1') -Force
 $config = Get-DvuConfig -Path (Join-Path $root 'config.json')
 
-Check 'config loads with UTF-8 toast text' { $config.proxyListUrl -and $config.toast.title -match 'conclu.do' }
+Check 'config loads with UTF-8 toast text' { $config.proxyProviders.Count -and $config.toast.title -match 'conclu.do' }
 
 $key = 'HKCU:\Software\DiscordVideoUnlockSmokeTest'
 $backup = Join-Path $env:TEMP "dvu-smoke-$PID.json"
@@ -82,21 +82,23 @@ function Stop-FakeServer($Server) { $Server.Listener.Stop(); $Server.Shell.Dispo
 
 $goodProxy = Start-FakeServer "HTTP/1.1 200 Connection established`r`n`r`n"
 $deniedProxy = Start-FakeServer "HTTP/1.1 403 Forbidden`r`n`r`n"
-$listJson = '{"proxies":[{"server":"127.0.0.1:' + $goodProxy.Port + '"},{"server":"evil; rm -rf"},{"server":"127.0.0.1:1;x"}]}'
-$listServer = Start-FakeServer ("HTTP/1.1 200 OK`r`nContent-Type: application/json`r`nContent-Length: " + $listJson.Length + "`r`nConnection: close`r`n`r`n" + $listJson)
-$cache = Join-Path $env:TEMP "dvu-smoke-cache-$PID.json"
+$listText = "http://8.8.8.8:80`n1.1.1.1:3128`r`n127.0.0.1:80`n10.0.0.1:80`n192.168.0.1:80`n8.8.8.8:80`n8.8.4.4:70000`n999.1.1.1:80`nevil; rm -rf:80`n"
+$listServer = Start-FakeServer ("HTTP/1.1 200 OK`r`nContent-Type: text/plain`r`nContent-Length: " + $listText.Length + "`r`nConnection: close`r`n`r`n" + $listText)
+$cache = Join-Path $env:TEMP "dvu-smoke-cache-$PID.txt"
 $listConfig = [pscustomobject]@{
-    proxyServer = ''; proxyListUrl = "http://127.0.0.1:$($listServer.Port)/proxies.json"
-    proxyListTimeoutSeconds = 5; proxyProbeTimeoutMs = 2000
+    proxyServer = ''; proxyProviders = @('http://127.0.0.1:1/dead.txt', "http://127.0.0.1:$($listServer.Port)/list.txt")
+    proxyDownloadTimeoutSeconds = 5; proxyScanSeconds = 5; proxyProbeTimeoutMs = 1000
 }
 $deadConfig = [pscustomobject]@{
-    proxyServer = ''; proxyListUrl = 'http://127.0.0.1:1/proxies.json'
-    proxyListTimeoutSeconds = 2; proxyProbeTimeoutMs = 1000
+    proxyServer = ''; proxyProviders = @('http://127.0.0.1:1/dead.txt')
+    proxyDownloadTimeoutSeconds = 2; proxyScanSeconds = 5; proxyProbeTimeoutMs = 1000
 }
+$noNetwork = { param([string[]]$Candidates, $Config) $Candidates | Where-Object { $_ -eq '8.8.8.8:80' } }
+$firstCached = { param([string[]]$Servers, $Config) $Servers[0] }
 try {
-    Check 'list parsing keeps only ip:port entries' {
-        $servers = @(ConvertFrom-DvuProxyList -Json $listJson)
-        $servers.Count -eq 1 -and $servers[0] -eq "127.0.0.1:$($goodProxy.Port)"
+    Check 'list parsing keeps only public ip:port entries' {
+        $servers = @(ConvertFrom-DvuProxyText -Text $listText)
+        $servers.Count -eq 2 -and $servers[0] -eq '8.8.8.8:80' -and $servers[1] -eq '1.1.1.1:3128'
     }
     Check 'probe skips dead and refusing proxies' {
         $found = [DiscordVideoUnlock.ProxyProbe]::FirstWorking(
@@ -107,18 +109,26 @@ try {
         $null -eq [DiscordVideoUnlock.ProxyProbe]::FirstWorking(
             [string[]]@('127.0.0.1:1', "127.0.0.1:$($deniedProxy.Port)"), 'discord.com', 1000)
     }
+    Check 'full check rejects a proxy without valid TLS' {
+        @([DiscordVideoUnlock.ProxyProbe]::FindVerified(
+            [string[]]@('127.0.0.1:1', "127.0.0.1:$($goodProxy.Port)"), 1, 10, 2000, 4000)).Count -eq 0
+    }
     Check 'configured proxyServer wins and skips the list' {
         (Select-DvuProxy -Config ([pscustomobject]@{ proxyServer = 'socks=127.0.0.1:1080' }) -CachePath $cache) -eq 'socks=127.0.0.1:1080'
     }
-    Check 'no cache and no list means no proxy' {
-        $null -eq (Select-DvuProxy -Config $deadConfig -CachePath $cache)
+    Check 'no cache and no provider means no proxy' {
+        $null -eq (Select-DvuProxy -Config $deadConfig -CachePath $cache -Probe $firstCached)
     }
-    Check 'missing cache is downloaded and probed' {
-        (Select-DvuProxy -Config $listConfig -CachePath $cache) -eq "127.0.0.1:$($goodProxy.Port)" -and (Test-Path $cache)
+    Check 'missing cache is filled from the providers' {
+        (Select-DvuProxy -Config $listConfig -CachePath $cache -Probe $firstCached -Verify $noNetwork) -eq '8.8.8.8:80'
     }
     Check 'failed update keeps the cached list' {
         $updated = Update-DvuProxyCache -Config $deadConfig -CachePath $cache
-        -not $updated -and (Select-DvuProxy -Config $deadConfig -CachePath $cache) -eq "127.0.0.1:$($goodProxy.Port)"
+        -not $updated -and (Select-DvuProxy -Config $deadConfig -CachePath $cache -Probe $firstCached) -eq '8.8.8.8:80'
+    }
+    Check 'scan with no working proxy keeps the cached list' {
+        $updated = Update-DvuProxyCache -Config $listConfig -CachePath $cache -Verify { param($Candidates, $Config) }
+        -not $updated -and ([IO.File]::ReadAllText($cache)).Trim() -eq '8.8.8.8:80'
     }
 } finally {
     foreach ($server in $goodProxy, $deniedProxy, $listServer) { Stop-FakeServer $server }

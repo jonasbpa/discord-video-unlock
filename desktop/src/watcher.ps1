@@ -66,14 +66,14 @@ try {
     }
     & $markKnown
 
-    # Refreshed between boots only: the download must not run while the proxy is on.
+    # Scanned between boots only: the download and the probes must not run while the proxy is on.
     $nextListUpdate = Get-Date
 
     while ($true) {
         Start-Sleep -Milliseconds $config.pollIntervalMs
 
         if ((Get-Date) -ge $nextListUpdate) {
-            $minutes = if (Update-DvuProxyCache -Config $config) { $config.proxyListRefreshMinutes } else { 5 }
+            $minutes = if (Update-DvuProxyCache -Config $config) { $config.proxyRefreshMinutes } else { 5 }
             $nextListUpdate = (Get-Date).AddMinutes($minutes)
         }
 

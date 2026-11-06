@@ -1,8 +1,12 @@
 {
   "proxyServer": "",
-  "proxyListUrl": "https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/proxy-list/proxies.json",
-  "proxyListRefreshMinutes": 60,
-  "proxyListTimeoutSeconds": 8,
+  "proxyProviders": [
+    "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=ipport&format=text&protocol=http",
+    "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt"
+  ],
+  "proxyRefreshMinutes": 180,
+  "proxyDownloadTimeoutSeconds": 15,
+  "proxyScanSeconds": 45,
   "proxyProbeTimeoutMs": 3000,
   "builds": ["Discord", "DiscordPTB", "DiscordCanary"],
   "pollIntervalMs": 500,

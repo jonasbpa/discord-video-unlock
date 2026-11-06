@@ -4,7 +4,7 @@ $script:InternetSettingsKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\I
 $script:StateDir = Join-Path $env:LOCALAPPDATA 'DiscordVideoUnlock'
 $script:LogPath = Join-Path $script:StateDir 'watcher.log'
 $script:BackupPath = Join-Path $script:StateDir 'proxy-backup.json'
-$script:ProxyCachePath = Join-Path $script:StateDir 'proxies-cache.json'
+$script:ProxyCachePath = Join-Path $script:StateDir 'proxies-cache.txt'
 $script:LogMaxBytes = 1MB
 
 # Hidden windows are invisible to Process.MainWindowTitle, and Discord started with
@@ -13,9 +13,12 @@ if (-not ('DiscordVideoUnlock.Win32' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
+using System.Net.Security;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Security.Authentication;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace DiscordVideoUnlock {
@@ -46,9 +49,10 @@ namespace DiscordVideoUnlock {
         }
     }
 
-    // Probes run concurrently: Discord may already be on its splash screen, so waiting for dead
-    // proxies one by one would let it finish booting from the real IP.
+    // Everything runs concurrently: Discord may already be on its splash screen, and most free
+    // proxies are dead, so testing them one by one would take minutes.
     public static class ProxyProbe {
+        // Fast check used at boot, on proxies that passed Verify earlier.
         public static string FirstWorking(string[] proxies, string host, int timeoutMs) {
             var pending = new List<Task<string>>();
             foreach (var proxy in proxies) pending.Add(Probe(proxy, host, timeoutMs));
@@ -65,26 +69,98 @@ namespace DiscordVideoUnlock {
             return null;
         }
 
+        // Full check of provider candidates. Stops as soon as enough proxies pass.
+        public static string[] FindVerified(string[] candidates, int want, int concurrency, int timeoutMs, int deadlineMs) {
+            var found = new List<string>();
+            var running = new List<Task<string>>();
+            var next = 0;
+            var started = DateTime.UtcNow;
+            while (found.Count < want && (next < candidates.Length || running.Count > 0)) {
+                var left = deadlineMs - (int)(DateTime.UtcNow - started).TotalMilliseconds;
+                if (left <= 0) break;
+                while (running.Count < concurrency && next < candidates.Length) running.Add(Verify(candidates[next++], timeoutMs));
+                var tasks = running.ToArray();
+                var i = Task.WaitAny(tasks, left);
+                if (i < 0) break;
+                if (tasks[i].Result != null) found.Add(tasks[i].Result);
+                running.RemoveAt(i);
+            }
+            return found.ToArray();
+        }
+
+        // Discord must accept the exit IP (blocked proxies get a 403 or 429) and the exit must not be
+        // in Brazil. TLS validation rejects proxies that intercept traffic. Requests are anonymous.
+        private static async Task<string> Verify(string proxy, int timeoutMs) {
+            var api = await Get(proxy, "discord.com", "/api/v9/gateway", timeoutMs);
+            if (api == null || !IsOk(api) || !api.Contains("gateway.discord.gg")) return null;
+            // discord.com answers 403 on /cdn-cgi/trace. Same Cloudflare geolocation, different zone.
+            var trace = await Get(proxy, "www.cloudflare.com", "/cdn-cgi/trace", timeoutMs);
+            if (trace == null) return null;
+            var loc = Regex.Match(trace, "(?m)^loc=([A-Z0-9]{2})\\s*$");
+            return loc.Success && loc.Groups[1].Value != "BR" ? proxy : null;
+        }
+
+        private static bool IsOk(string head) {
+            return head.StartsWith("HTTP/1.1 200") || head.StartsWith("HTTP/1.0 200");
+        }
+
         private static async Task<string> Probe(string proxy, string host, int timeoutMs) {
             var client = new TcpClient();
             try {
-                var sep = proxy.LastIndexOf(':');
-                var timeout = Task.Delay(timeoutMs);
-                var connect = client.ConnectAsync(proxy.Substring(0, sep), int.Parse(proxy.Substring(sep + 1)));
-                if (await Task.WhenAny(connect, timeout) != connect) return null;
-                await connect;
-                var stream = client.GetStream();
-                var request = Encoding.ASCII.GetBytes("CONNECT " + host + ":443 HTTP/1.1\r\nHost: " + host + ":443\r\n\r\n");
-                await stream.WriteAsync(request, 0, request.Length);
-                var buffer = new byte[256];
-                var read = stream.ReadAsync(buffer, 0, buffer.Length);
-                if (await Task.WhenAny(read, timeout) != read) return null;
-                var head = Encoding.ASCII.GetString(buffer, 0, await read);
-                return head.StartsWith("HTTP/1.1 200") || head.StartsWith("HTTP/1.0 200") ? proxy : null;
+                var work = OpenTunnel(client, proxy, host);
+                if (await Task.WhenAny(work, Task.Delay(timeoutMs)) != work) return null;
+                return await work ? proxy : null;
             } catch (Exception) {
                 return null;
             } finally {
                 client.Close();
+            }
+        }
+
+        private static async Task<string> Get(string proxy, string host, string path, int timeoutMs) {
+            var client = new TcpClient();
+            try {
+                var work = GetThroughTunnel(client, proxy, host, path);
+                if (await Task.WhenAny(work, Task.Delay(timeoutMs)) != work) return null;
+                return await work;
+            } catch (Exception) {
+                return null;
+            } finally {
+                client.Close();
+            }
+        }
+
+        private static async Task<bool> OpenTunnel(TcpClient client, string proxy, string host) {
+            var sep = proxy.LastIndexOf(':');
+            await client.ConnectAsync(proxy.Substring(0, sep), int.Parse(proxy.Substring(sep + 1)));
+            var stream = client.GetStream();
+            var request = Encoding.ASCII.GetBytes("CONNECT " + host + ":443 HTTP/1.1\r\nHost: " + host + ":443\r\n\r\n");
+            await stream.WriteAsync(request, 0, request.Length);
+            // One byte at a time: anything read past the header would belong to the TLS handshake.
+            var head = new StringBuilder();
+            var one = new byte[1];
+            while (head.Length < 8192) {
+                if (await stream.ReadAsync(one, 0, 1) == 0) return false;
+                head.Append((char)one[0]);
+                if (one[0] == 10 && head.ToString().EndsWith("\r\n\r\n")) return IsOk(head.ToString());
+            }
+            return false;
+        }
+
+        private static async Task<string> GetThroughTunnel(TcpClient client, string proxy, string host, string path) {
+            if (!await OpenTunnel(client, proxy, host)) return null;
+            using (var tls = new SslStream(client.GetStream())) {
+                await tls.AuthenticateAsClientAsync(host, null, SslProtocols.Tls12, false);
+                var request = Encoding.ASCII.GetBytes("GET " + path + " HTTP/1.1\r\nHost: " + host + "\r\nUser-Agent: Mozilla/5.0\r\nConnection: close\r\n\r\n");
+                await tls.WriteAsync(request, 0, request.Length);
+                var body = new StringBuilder();
+                var buffer = new byte[4096];
+                while (body.Length < 65536) {
+                    var n = await tls.ReadAsync(buffer, 0, buffer.Length);
+                    if (n == 0) break;
+                    body.Append(Encoding.ASCII.GetString(buffer, 0, n));
+                }
+                return body.ToString();
             }
         }
     }
@@ -166,28 +242,66 @@ function Restore-BootProxy {
 
 # ---------------------------------------------------------------- proxy list
 
-function ConvertFrom-DvuProxyList {
-    param([Parameter(Mandatory)][string]$Json)
-    # The list is built from third-party data and ends up in the registry: accept only ip:port.
-    @((ConvertFrom-Json $Json).proxies | ForEach-Object { [string]$_.server } |
-        Where-Object { $_ -match '^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$' })
+function ConvertFrom-DvuProxyText {
+    # Provider data is untrusted and ends up in the registry, and a private address here would make
+    # the probes scan the user's own network. Only public ip:port values get through.
+    param([AllowEmptyString()][string]$Text)
+    $seen = @{}
+    foreach ($m in [regex]::Matches($Text, '(?m)^(?:https?://)?(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}):(\d{1,5})\s*$')) {
+        $o = 1..4 | ForEach-Object { [int]$m.Groups[$_].Value }
+        $port = [int]$m.Groups[5].Value
+        if (($o | Where-Object { $_ -gt 255 }) -or $port -lt 1 -or $port -gt 65535) { continue }
+        $a = $o[0]; $b = $o[1]
+        if ($a -eq 0 -or $a -eq 10 -or $a -eq 127 -or $a -ge 224) { continue }
+        if ($a -eq 100 -and $b -ge 64 -and $b -le 127) { continue }
+        if ($a -eq 169 -and $b -eq 254) { continue }
+        if ($a -eq 172 -and $b -ge 16 -and $b -le 31) { continue }
+        if ($a -eq 192 -and ($b -eq 0 -or $b -eq 168)) { continue }
+        if ($a -eq 198 -and ($b -eq 18 -or $b -eq 19)) { continue }
+        $server = '{0}.{1}.{2}.{3}:{4}' -f $o[0], $o[1], $o[2], $o[3], $port
+        if (-not $seen.ContainsKey($server)) { $seen[$server] = $true; $server }
+    }
+}
+
+function Get-DvuProviderProxies {
+    param([Parameter(Mandatory)]$Config)
+    $ProgressPreference = 'SilentlyContinue'
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    $all = foreach ($url in $Config.proxyProviders) {
+        try {
+            $content = (Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec $Config.proxyDownloadTimeoutSeconds).Content
+            if ($content -is [byte[]]) { $content = [Text.Encoding]::UTF8.GetString($content) }
+            ConvertFrom-DvuProxyText -Text $content
+        } catch {
+            Write-DvuLog "proxy provider failed ($url): $($_.Exception.Message)"
+        }
+    }
+    @($all | Select-Object -Unique | Sort-Object { Get-Random })
 }
 
 function Update-DvuProxyCache {
+    <#
+      Downloads the provider lists and caches the proxies that pass a full check. A failed run keeps
+      the previous cache. -Verify exists so tests stay off the network.
+    #>
     param(
         [Parameter(Mandatory)]$Config,
-        [string]$CachePath = $script:ProxyCachePath
+        [string]$CachePath = $script:ProxyCachePath,
+        [scriptblock]$Verify = {
+            param([string[]]$Candidates, $Config)
+            [DiscordVideoUnlock.ProxyProbe]::FindVerified($Candidates, 10, 100, 8000, $Config.proxyScanSeconds * 1000)
+        }
     )
-    $ProgressPreference = 'SilentlyContinue'
     try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-        $json = (Invoke-WebRequest -UseBasicParsing -Uri $Config.proxyListUrl -TimeoutSec $Config.proxyListTimeoutSeconds).Content
-        if ($json -is [byte[]]) { $json = [Text.Encoding]::UTF8.GetString($json) }
-        if (-not @(ConvertFrom-DvuProxyList -Json $json).Count) { throw 'list has no valid proxies' }
+        $candidates = @(Get-DvuProviderProxies -Config $Config)
+        if (-not $candidates.Count) { throw 'no candidates from any provider' }
+        $working = @(& $Verify $candidates $Config)
+        Write-DvuLog "proxy scan: $($working.Count) working out of $($candidates.Count) candidates"
+        if (-not $working.Count) { return $false }
         $dir = Split-Path $CachePath -Parent
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force $dir | Out-Null }
         $tmp = "$CachePath.tmp"
-        [IO.File]::WriteAllText($tmp, $json)
+        [IO.File]::WriteAllLines($tmp, [string[]]$working)
         Move-Item -Force $tmp $CachePath
         $true
     } catch {
@@ -199,30 +313,32 @@ function Update-DvuProxyCache {
 function Select-DvuProxy {
     <#
       Returns the proxy to boot through, or $null. A configured proxyServer always wins and is not
-      probed, since it may use any syntax Windows accepts. Otherwise the cached list is used first:
-      downloading it on every boot would lose the race against Discord's splash screen.
+      probed, since it may use any syntax Windows accepts. Otherwise cached proxies are tried first:
+      a provider scan takes too long to win the race against Discord's splash screen.
     #>
     param(
         [Parameter(Mandatory)]$Config,
-        [string]$CachePath = $script:ProxyCachePath
+        [string]$CachePath = $script:ProxyCachePath,
+        [scriptblock]$Probe = {
+            param([string[]]$Servers, $Config)
+            [DiscordVideoUnlock.ProxyProbe]::FirstWorking($Servers, 'discord.com', $Config.proxyProbeTimeoutMs)
+        },
+        [scriptblock]$Verify
     )
     if ($Config.proxyServer) { return $Config.proxyServer }
 
     $probeCache = {
         if (-not (Test-Path $CachePath)) { return $null }
-        try {
-            $servers = @(ConvertFrom-DvuProxyList -Json ([IO.File]::ReadAllText($CachePath)))
-        } catch {
-            Write-DvuLog "proxy cache unreadable: $($_.Exception.Message)"
-            return $null
-        }
+        $servers = @(ConvertFrom-DvuProxyText -Text ([IO.File]::ReadAllText($CachePath)))
         if (-not $servers.Count) { return $null }
-        [DiscordVideoUnlock.ProxyProbe]::FirstWorking([string[]]$servers, 'discord.com', $Config.proxyProbeTimeoutMs)
+        & $Probe $servers $Config
     }
 
     $proxy = & $probeCache
     if ($proxy) { return $proxy }
-    if (Update-DvuProxyCache -Config $Config -CachePath $CachePath) { return (& $probeCache) }
+    $update = @{ Config = $Config; CachePath = $CachePath }
+    if ($Verify) { $update.Verify = $Verify }
+    if (Update-DvuProxyCache @update) { return (& $probeCache) }
     $null
 }
 
@@ -410,6 +526,6 @@ function Invoke-Bypass {
 }
 
 Export-ModuleMember -Function Write-DvuLog, Get-DvuConfig, Get-ProxySnapshot, Enable-BootProxy, Restore-BootProxy,
-    ConvertFrom-DvuProxyList, Update-DvuProxyCache, Select-DvuProxy,
+    ConvertFrom-DvuProxyText, Get-DvuProviderProxies, Update-DvuProxyCache, Select-DvuProxy,
     Resolve-DiscordInstall, Get-DiscordPids, Get-DiscordMainProcesses, Test-DiscordReady, Wait-DiscordReady,
     Start-Discord, Stop-DiscordBuild, Show-DvuToast, Stop-DvuWatcher, Invoke-Bypass
