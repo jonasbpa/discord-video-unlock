@@ -1,11 +1,17 @@
 <#
 .SYNOPSIS
-    Registers the watcher to start hidden at logon (HKCU Run, no admin) and starts it now.
+    Registers the watcher to start hidden at logon (HKCU Run, no admin), replaces any running
+    watcher and starts the new one, which (re)starts Discord through the bypass.
+
+.PARAMETER NoStart
+    Only register the logon entry.
 #>
 [CmdletBinding()]
 param([switch]$NoStart)
 
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot 'src\DiscordVideoUnlock.psm1') -Force
+
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $watcher = Join-Path $PSScriptRoot 'src\watcher.ps1'
 $conhost = Join-Path $env:SystemRoot 'System32\conhost.exe'
@@ -13,22 +19,16 @@ $powershell = Join-Path $PSHOME 'powershell.exe'
 
 # conhost --headless runs the console app with no window at all, even when Windows Terminal is
 # the default terminal (where -WindowStyle Hidden still flashes a window).
-$watcherArgs = "--headless `"$powershell`" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$watcher`""
+$watcherArgs = "--headless `"$powershell`" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$watcher`" -Takeover"
 
-New-ItemProperty -Path $runKey -Name 'DiscordVideoUnlock' -Value "`"$conhost`" $watcherArgs -AtLogon" -PropertyType String -Force | Out-Null
-Write-Host "Logon entry registered: $runKey\DiscordVideoUnlock"
+# At logon Discord's own autostart (if enabled) starts it; -Takeover restarts it if it won the race.
+New-ItemProperty -Path $runKey -Name 'DiscordVideoUnlock' -Value "`"$conhost`" $watcherArgs" -PropertyType String -Force | Out-Null
+Write-Verbose "Logon entry registered: $runKey\DiscordVideoUnlock"
 
-$runValues = (Get-ItemProperty -Path $runKey).PSObject.Properties.Name
-$conflicts = @('Discord', 'DiscordPTB', 'DiscordCanary') | Where-Object { $runValues -contains $_ }
-if ($conflicts) {
-    # -f binds tighter than +, so the concatenation needs its own parentheses.
-    Write-Warning (("Discord's own autostart is enabled ({0}). It races with the watcher and may cost an " +
-        "extra restart at logon. Turn off 'Open Discord' in Discord > User Settings > Windows Settings; the " +
-        "watcher launches Discord itself (config.launchAtLogon). Discord rewrites its Run entry on every " +
-        "launch, so deleting it here would not stick.") -f ($conflicts -join ', '))
-}
+$stopped = Stop-DvuWatcher
+Write-Verbose "Stopped $stopped previous watcher(s)."
 
 if (-not $NoStart) {
-    Start-Process -FilePath $conhost -ArgumentList $watcherArgs
-    Write-Host "Watcher started. Log: $env:LOCALAPPDATA\DiscordVideoUnlock\watcher.log"
+    Start-Process -FilePath $conhost -ArgumentList "$watcherArgs -Launch"
+    Write-Verbose "Watcher started. Log: $env:LOCALAPPDATA\DiscordVideoUnlock\watcher.log"
 }

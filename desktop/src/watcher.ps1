@@ -2,27 +2,38 @@
 .SYNOPSIS
     Background watcher: every time Discord starts, holds the system proxy on until it has booted.
 
-.PARAMETER AtLogon
-    Set by the logon entry. Launches Discord through the bypass when config.launchAtLogon is true.
+.PARAMETER Takeover
+    Restart any Discord that already finished booting without the proxy when the watcher starts.
+    Used at logon (Discord's own autostart may win the race) and right after install.
+
+.PARAMETER Launch
+    Start Discord through the bypass if it is not running. Used right after install.
 #>
 [CmdletBinding()]
 param(
     [string]$ConfigPath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'config.json'),
-    [switch]$AtLogon
+    [switch]$Takeover,
+    [switch]$Launch
 )
 
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'DiscordVideoUnlock.psm1') -Force
 
 $mutex = New-Object System.Threading.Mutex($false, 'Local\DiscordVideoUnlockWatcher')
-if (-not $mutex.WaitOne(0)) {
+try {
+    $owned = $mutex.WaitOne(0)
+} catch [System.Threading.AbandonedMutexException] {
+    # Previous watcher was killed (update/uninstall) without releasing it; we own it now.
+    $owned = $true
+}
+if (-not $owned) {
     Write-DvuLog 'watcher already running, exiting'
     return
 }
 
 try {
     $config = Get-DvuConfig -Path $ConfigPath
-    Write-DvuLog "watcher started (pid=$PID, atLogon=$AtLogon)"
+    Write-DvuLog "watcher started (pid=$PID, takeover=$Takeover, launch=$Launch)"
 
     if (Restore-BootProxy) { Write-DvuLog 'restored proxy settings left behind by a previous run' }
 
@@ -35,23 +46,23 @@ try {
     }
 
     $running = @(Get-DiscordMainProcesses -Builds $config.builds)
-    if ($running.Count) {
-        # Started before us (e.g. Discord's own autostart won the race). If it is still on the
-        # splash we can catch it; otherwise it booted without the proxy and must be restarted.
-        foreach ($m in $running) {
-            if (Test-DiscordReady -ProcessId $m.ProcessId) {
-                if ($AtLogon) {
-                    $inactive = $m.CommandLine -match '--start-(inactive|minimized)'
-                    [void](Invoke-Bypass -Config $config -Build $m.Build -Mode Relaunch -Inactive:$inactive)
-                } else {
-                    Write-DvuLog "[$($m.Build)] already running at watcher start, left alone"
-                }
-            } else {
-                [void](Invoke-Bypass -Config $config -Build $m.Build -Mode Attach)
-            }
+    foreach ($m in $running) {
+        if (-not (Test-DiscordReady -ProcessId $m.ProcessId)) {
+            [void](Invoke-Bypass -Config $config -Build $m.Build -Mode Attach)
+        } elseif ($Takeover) {
+            $inactive = $m.CommandLine -match '--start-(inactive|minimized)'
+            [void](Invoke-Bypass -Config $config -Build $m.Build -Mode Relaunch -Inactive:$inactive)
+        } else {
+            Write-DvuLog "[$($m.Build)] already running at watcher start, left alone"
         }
-    } elseif ($AtLogon -and $config.launchAtLogon) {
-        [void](Invoke-Bypass -Config $config -Build $config.launchBuild -Mode Launch -Inactive:([bool]$config.startInactive))
+    }
+    if ($Launch -and -not $running.Count) {
+        $build = $config.builds | Where-Object { Resolve-DiscordInstall -Build $_ } | Select-Object -First 1
+        if ($build) {
+            [void](Invoke-Bypass -Config $config -Build $build -Mode Launch)
+        } else {
+            Write-DvuLog 'no Discord install found to launch'
+        }
     }
     & $markKnown
 

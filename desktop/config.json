@@ -1,9 +1,6 @@
 {
   "proxyServer": "181.39.25.196:8118",
   "builds": ["Discord", "DiscordPTB", "DiscordCanary"],
-  "launchAtLogon": true,
-  "launchBuild": "Discord",
-  "startInactive": true,
   "pollIntervalMs": 500,
   "readyTimeoutSeconds": 120,
   "settleSeconds": 3,

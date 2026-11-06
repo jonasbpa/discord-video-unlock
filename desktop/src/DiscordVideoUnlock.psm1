@@ -241,6 +241,16 @@ function Show-DvuToast {
     }
 }
 
+function Stop-DvuWatcher {
+    # Matches both the installed copy (%LOCALAPPDATA%\DiscordVideoUnlock\app) and a repo checkout.
+    $procs = @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -match '(?i)(DiscordVideoUnlock|discord-video-unlock).*\\src\\watcher\.ps1' })
+    foreach ($p in $procs) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
+    # A watcher killed mid-boot leaves the proxy on.
+    [void](Restore-BootProxy)
+    $procs.Count
+}
+
 # ---------------------------------------------------------------- bypass
 
 function Invoke-Bypass {
@@ -286,4 +296,4 @@ function Invoke-Bypass {
 
 Export-ModuleMember -Function Write-DvuLog, Get-DvuConfig, Get-ProxySnapshot, Enable-BootProxy, Restore-BootProxy,
     Resolve-DiscordInstall, Get-DiscordPids, Get-DiscordMainProcesses, Test-DiscordReady, Wait-DiscordReady,
-    Start-Discord, Stop-DiscordBuild, Show-DvuToast, Invoke-Bypass
+    Start-Discord, Stop-DiscordBuild, Show-DvuToast, Stop-DvuWatcher, Invoke-Bypass
