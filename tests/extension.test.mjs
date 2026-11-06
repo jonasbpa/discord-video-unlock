@@ -34,13 +34,13 @@ test("hostile provider values are dropped", () => {
   assert.ok(isValidServer("181.39.25.196:8118"));
 });
 
-test("candidates are ranked by proximity, then reliability, without duplicates", () => {
+test("candidates are ranked by reliability, proximity and score, without duplicates", () => {
   const ranked = rankCandidates([
     { server: "de:1", country: "DE", score: 99 }, { server: "us:1", country: "US", score: 99 },
     { server: "ar:low", country: "AR", score: 1 }, { server: "ar:high", country: "AR", score: 50 },
     { server: "ar:high", country: "AR", score: 50 }, null,
   ]);
-  assert.deepEqual(ranked.map(e => e.server), ["ar:high", "ar:low", "us:1", "de:1"]);
+  assert.deepEqual(ranked.map(e => e.server), ["ar:high", "us:1", "de:1", "ar:low"]);
 });
 
 test("PAC proxies only Discord login hosts, with no DIRECT fallback", () => {
@@ -240,6 +240,59 @@ test("the alarm and a browser restart always turn the proxy off", async () => {
   await restart.controller.onBrowserStart();
   assert.equal(restart.active(), null);
   assert.equal(restart.sessionData.armed, false);
+});
+
+test("prewarm leaves a working chain ready and the proxy off", async () => {
+  const t = setup();
+  await t.controller.prewarm();
+  await t.settle();
+  assert.equal(t.active(), null);
+  assert.deepEqual(t.data.working, servers(BATCH_SIZE));
+  assert.equal(t.calls.alarmsCleared, 1);
+  assert.equal(t.sessionData.status, undefined, "no status change for the user");
+});
+
+test("prewarm that finds nothing turns the proxy off", async () => {
+  const t = setup({ respond: async () => { throw new Error("dead"); } });
+  await t.controller.prewarm();
+  await t.settle();
+  assert.equal(t.active(), null);
+  assert.deepEqual(t.data.working, []);
+});
+
+test("a page load takes over a running prewarm", async () => {
+  let unblock;
+  const t = setup({
+    respond: async () => {
+      await new Promise(resolve => { unblock = resolve; });
+      return { ok: true, text: async () => "gateway.discord.gg loc=AR" };
+    },
+  });
+  await t.controller.prewarm();
+  await t.settle();
+  await t.controller.onNavigate();
+  await t.settle();
+  unblock();
+  await t.settle();
+  assert.equal(t.sessionData.armed, true);
+  assert.notEqual(t.active(), null, "the old search must not turn the proxy off");
+});
+
+test("prewarm does not run during a login, with an own proxy or when disabled", async () => {
+  const armed = setup();
+  await armed.controller.onNavigate();
+  await armed.settle();
+  const before = armed.calls.set.length;
+  await armed.controller.prewarm();
+  await armed.settle();
+  assert.equal(armed.calls.set.length, before);
+
+  for (const options of [{ ownProxy: "5.5.5.5:8118" }, { enabled: false }]) {
+    const t = setup(options);
+    await t.controller.prewarm();
+    await t.settle();
+    assert.equal(t.calls.set.length, 0);
+  }
 });
 
 test("a stale list is refreshed and an empty download keeps the old one", async () => {

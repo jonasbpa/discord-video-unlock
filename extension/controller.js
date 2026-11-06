@@ -4,8 +4,8 @@
 import { PROVIDERS, parseTraceCountry, rankCandidates } from "./lib.js";
 
 export const BATCH_SIZE = 8;
-export const MAX_BATCHES = 8;
-export const VERIFY_TIMEOUT_MS = 12_000;
+export const MAX_BATCHES = 12;
+export const VERIFY_TIMEOUT_MS = 6_000;
 export const SETTLE_MS = 10_000;
 export const ARM_TIMEOUT_MINUTES = 2;
 export const LIST_MAX_AGE_MS = 3 * 60 * 60 * 1000;
@@ -61,7 +61,8 @@ export function createController({ proxy, store, session, alarms, ui, fetchFn, w
     }
   }
 
-  async function searchLoop(current, ownProxy) {
+  // `prewarm` runs with no page waiting: it only leaves a working chain ready for the next load.
+  async function searchLoop(current, ownProxy, prewarm = false) {
     let { working = [] } = await store.get();
     const candidates = ownProxy ? [ownProxy] : await getCandidates();
     if (current !== run) return;
@@ -82,11 +83,31 @@ export function createController({ proxy, store, session, alarms, ui, fetchFn, w
       if (current !== run) return;
       if (country) {
         if (!ownProxy) await store.set({ working: batch });
-        await setStatus("connecting", { country });
+        if (prewarm) await stopPrewarm();
+        else await setStatus("connecting", { country });
         return;
       }
     }
-    if (current === run) await disarm("failed");
+    if (current !== run) return;
+    if (prewarm) await stopPrewarm();
+    else await disarm("failed");
+  }
+
+  async function stopPrewarm() {
+    run++;
+    await proxy.clear();
+    await alarms.clear();
+  }
+
+  // Only Discord hosts are routed, so this does not touch the user's other traffic. A page load
+  // during the search takes over through `run`.
+  async function prewarm() {
+    const { enabled = true, ownProxy = "" } = await store.get();
+    const { armed = false } = await session.get();
+    if (!enabled || ownProxy || armed) return;
+    const current = ++run;
+    await alarms.create(ARM_TIMEOUT_MINUTES);
+    searchLoop(current, "", true).catch(() => stopPrewarm());
   }
 
   async function arm() {
@@ -136,8 +157,8 @@ export function createController({ proxy, store, session, alarms, ui, fetchFn, w
   }
 
   async function onAlarm() {
-    const { armed = false } = await session.get();
-    await disarm(armed ? "failed" : "idle");
+    const { armed = false, status = "idle" } = await session.get();
+    await disarm(armed ? "failed" : status);
   }
 
   // A browser restart keeps proxy settings but loses the session, so anything found here is stale.
@@ -147,11 +168,12 @@ export function createController({ proxy, store, session, alarms, ui, fetchFn, w
     await alarms.clear();
     await session.set({ armed: false });
     await setStatus("idle");
+    await prewarm();
   }
 
   async function onInstalled() {
-    await onBrowserStart();
     await refreshCandidates();
+    await onBrowserStart();
   }
 
   async function setEnabled(enabled) {
@@ -164,5 +186,5 @@ export function createController({ proxy, store, session, alarms, ui, fetchFn, w
     await store.set({ ownProxy, working: [] });
   }
 
-  return { arm, disarm, onNavigate, onGatewayOpen, onAlarm, onBrowserStart, onInstalled, setEnabled, setOwnProxy, refreshCandidates };
+  return { arm, disarm, prewarm, onNavigate, onGatewayOpen, onAlarm, onBrowserStart, onInstalled, setEnabled, setOwnProxy, refreshCandidates };
 }

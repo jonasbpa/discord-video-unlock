@@ -61,7 +61,11 @@ export const PROVIDERS = [
   },
 ];
 
-// Nearest country first, then the most reliable within each country.
+// Providers that report no real uptime score low. Reliable proxies come first, because most of the
+// rest are dead and every dead batch makes the user wait.
+const RELIABLE_SCORE = 50;
+
+// Reliable before unreliable, then nearest country, then highest score.
 export function rankCandidates(entries) {
   const rank = c => {
     const i = NEAR_COUNTRIES.indexOf(c);
@@ -70,7 +74,10 @@ export function rankCandidates(entries) {
   const seen = new Set();
   return entries
     .filter(e => e && !seen.has(e.server) && seen.add(e.server))
-    .sort((a, b) => rank(a.country) - rank(b.country) || b.score - a.score);
+    .sort((a, b) =>
+      (b.score >= RELIABLE_SCORE) - (a.score >= RELIABLE_SCORE) ||
+      rank(a.country) - rank(b.country) ||
+      b.score - a.score);
 }
 
 export function buildPac(servers) {
