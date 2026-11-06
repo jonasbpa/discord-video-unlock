@@ -1,7 +1,7 @@
 # CLAUDE.md
 
-Re-enables Discord's video features restricted in Brazil. The restriction is decided server-side from
-the IP seen at login; see README.md for user-facing docs.
+Archived on 2026-11-06: Discord added a server-side block, so this no longer works (see README.md). It
+re-enabled Discord's video features restricted in Brazil by logging in through a proxy outside Brazil.
 
 ## Layout
 

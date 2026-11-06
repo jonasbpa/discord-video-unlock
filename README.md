@@ -1,37 +1,63 @@
 # discord-video-unlock
 
-Re-enables camera / screen share / Go Live for Discord accounts restricted in Brazil. Discord decides the
-restriction on its servers from the IP it sees at login, so logging in through a proxy outside Brazil and
-then turning the proxy off unlocks the session.
+> **Archived on 2026-11-06. This project no longer works and is not maintained.** Discord now blocks this
+> on its servers, so neither the Windows watcher nor the browser extension can unlock anything.
+> The [install page](https://jonasbpa.github.io/discord-video-unlock/) may still be online, but do not use it.
 
-**Install page (pt-BR, one click / one command): https://jonasbpa.github.io/discord-video-unlock/**
+This project re-enabled camera, screen share and Go Live for Discord accounts restricted in Brazil.
 
-## Quick start
+## Why it was archived
+
+Discord closed each approach in turn, and the last one was closed on the server, where a client has no way
+to change the decision:
+
+| Approach | Worked by | How it ended |
+|---|---|---|
+| Userscript and bookmarklet | Overriding the `2026-08-video-guard` experiment in the page | Discord removed the experiment and the override action from its client bundle |
+| Proxy during login (Windows watcher, browser extension) | Logging in from an IP outside Brazil, so the server did not apply the restriction | Discord added a server-side block |
+
+The proxy approach was confirmed working on 2026-11-06, on the Windows app and in the browser, before the
+block appeared the same day. How the block decides who to restrict was not investigated. Since the work had
+no remaining path that was not another round of the same contest, the project stopped here.
+
+The restriction comes from an ANPD order, and getting around it violates Discord's Terms of Service;
+accounts can be suspended.
+
+## If you installed it
+
+Remove it. The watcher no longer unlocks anything, but it still restarts Discord and sends Windows' traffic
+through a free public proxy every time Discord opens.
 
 **Windows app**: open PowerShell and run:
-
-```powershell
-irm https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/main/install.ps1 | iex
-```
-
-No admin needed. Discord restarts unlocked and stays unlocked on every launch after that. Run the
-same command again to update. To uninstall:
 
 ```powershell
 irm https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/main/uninstall.ps1 | iex
 ```
 
-**Browser (discord.com)**: load the extension in `extension/`, as described in [Browser](#browser).
+This removes the logon entry, stops the watcher, restores your proxy settings and deletes
+`%LOCALAPPDATA%\DiscordVideoUnlock`.
 
-> **Risk.** The restriction comes from an ANPD order, and getting around it violates Discord's Terms of
-> Service; accounts can be suspended. Proxies come from public free lists and no list can make them
-> trustworthy: an operator sees your IP and which hosts you connect to (not the TLS content) and may log
-> it. Their IPs may also trigger captcha or phone checks. While the proxy is on, the Windows variant sends
-> **all** of Windows' HTTP traffic through it for a few seconds. The extension only sends Discord's, during
-> login. Prefer a proxy you control.
+**Browser**: remove the extension or userscript from your browser's extensions page, and delete the folder
+if you loaded it unpacked. If you added a proxy to FoxyProxy for this, remove that too.
+
+If your connection stopped working after an interrupted run: **Settings → Network & Internet → Proxy →
+Manual proxy setup → Off**.
+
+## What was learned
+
+- The restriction was decided from the IP Discord saw at login. After login, the proxy could be turned off
+  and the session stayed unlocked until the next reconnect.
+- With a channel's region on automatic, Discord picked the voice server near the proxy's location, which
+  caused 400 ms+ of ping. Setting **Region Override** to Brazil fixed it.
+- Free proxies die quickly, but testing many at once found working ones in seconds: about 10 out of 6,800
+  candidates in 20 to 40 seconds.
 
 Based on the findings in
 [guilhermedecastrogt/unlock-screen-discord-brasil](https://github.com/guilhermedecastrogt/unlock-screen-discord-brasil).
+
+---
+
+Everything below describes how the project worked before it was archived. **It no longer unlocks anything.**
 
 ## Windows
 
