@@ -20,9 +20,9 @@ test("proxyscrape keeps live HTTPS-capable proxies outside Brazil", () => {
 
 test("proxifly format is parsed", () => {
   const out = provider("proxifly").parse([
-    { protocol: "http", https: true, ip: "8.8.4.4", port: 3128, score: 2, geolocation: { country: "DE" } },
-    { protocol: "http", https: false, ip: "8.8.8.8", port: 3128, score: 2, geolocation: { country: "DE" } },
-    { protocol: "socks5", https: true, ip: "1.1.1.1", port: 3128, score: 2, geolocation: { country: "DE" } },
+    { protocol: "http", https: false, ip: "8.8.4.4", port: 3128, score: 2, geolocation: { country: "DE" } },
+    { protocol: "http", https: false, ip: "8.8.8.8", port: 3128, score: 2, geolocation: { country: "BR" } },
+    { protocol: "socks5", https: false, ip: "1.1.1.1", port: 3128, score: 2, geolocation: { country: "DE" } },
   ]).filter(Boolean);
   assert.deepEqual(out, [{ host: "8.8.4.4", port: 3128, country: "DE", score: 2 }]);
 });

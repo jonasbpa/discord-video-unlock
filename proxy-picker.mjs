@@ -40,7 +40,8 @@ export const PROVIDERS = [
     name: "proxifly",
     url: "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.json",
     parse: data => data
-      .filter(e => e.https && e.protocol === "http")
+      // No HTTPS filter: this provider reports `https: false` for every entry.
+      .filter(e => e.protocol === "http")
       .map(e => entry(e.ip, e.port, e.geolocation?.country, e.score)),
   },
 ];
