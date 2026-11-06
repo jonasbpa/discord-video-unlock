@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Discord Video Unlock</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235865f2'/%3E%3Cpath d='M9 11h10v10H9z M20 14l5-3v10l-5-3z' fill='white'/%3E%3C/svg%3E">
+<meta name="description" content="Libera câmera e compartilhamento de tela do Discord no Brasil, no Windows e no navegador.">
+<style>
+  :root {
+    --bg: #f6f7fb; --card: #ffffff; --text: #1d2130; --muted: #5d6475; --line: #e3e6ef;
+    --accent: #5865f2; --accent-text: #ffffff; --code-bg: #10131c; --code-text: #e6e9f2;
+    --warn-bg: #fff6e0; --warn-line: #f0c75e; --warn-text: #5c4400; --ok: #1f8f4e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1117; --card: #171a23; --text: #e8eaf1; --muted: #9aa1b2; --line: #272b38;
+      --accent: #7983f5; --accent-text: #0f1117; --code-bg: #0a0c12; --code-text: #e6e9f2;
+      --warn-bg: #2a2310; --warn-line: #6b5717; --warn-text: #f0d68a; --ok: #4cc785;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 40px 16px 64px; }
+  h1 { font-size: 2rem; margin: 0 0 4px; letter-spacing: -0.02em; }
+  .lead { color: var(--muted); margin: 0 0 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 24px; margin: 20px 0; }
+  .card h2 { margin: 0 0 4px; font-size: 1.25rem; }
+  .card .sub { color: var(--muted); margin: 0 0 16px; font-size: .95rem; }
+  ol { padding-left: 1.3em; margin: 0; }
+  li { margin: 10px 0; }
+  .cmd { display: flex; gap: 8px; align-items: stretch; margin: 8px 0; }
+  .cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; background: var(--code-bg); color: var(--code-text);
+    padding: 12px 14px; border-radius: 10px; font: 13.5px/1.4 ui-monospace, Consolas, monospace; }
+  button, .btn { appearance: none; border: 0; cursor: pointer; background: var(--accent); color: var(--accent-text);
+    font: 600 14px/1 inherit; font-family: inherit; padding: 12px 16px; border-radius: 10px; text-decoration: none;
+    display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
+  button.copied { background: var(--ok); }
+  .btn.bookmarklet { cursor: grab; border: 2px dashed var(--accent-text); outline: 2px solid var(--accent); }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 8px 0; }
+  .muted { color: var(--muted); font-size: .92rem; }
+  .warn { background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--warn-text);
+    border-radius: 12px; padding: 14px 16px; font-size: .93rem; }
+  details { margin-top: 16px; }
+  summary { cursor: pointer; color: var(--muted); }
+  kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; font: 13px ui-monospace, Consolas, monospace; }
+  a { color: var(--accent); }
+  footer { color: var(--muted); font-size: .9rem; text-align: center; margin-top: 32px; }
+  #hint { min-height: 1.4em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Discord Video Unlock</h1>
+  <p class="lead">Libera câmera, compartilhamento de tela e Go Live do Discord no Brasil. Grátis e de código aberto.</p>
+
+  <div class="warn">
+    <strong>Leia antes:</strong> a restrição vem de uma determinação da ANPD e contornar ela viola os Termos do Discord.
+    Sua conta pode ser suspensa. Use por sua conta e risco. No Windows, o tráfego da internet passa por um proxy público
+    durante os poucos segundos em que o Discord abre.
+  </div>
+
+  <section class="card">
+    <h2>Windows (aplicativo do Discord)</h2>
+    <p class="sub">Instala uma vez e funciona sozinho sempre que o Discord abrir. Não precisa de administrador.</p>
+    <ol>
+      <li>Aperte <kbd>Win</kbd>, digite <strong>PowerShell</strong> e aperte <kbd>Enter</kbd>.</li>
+      <li>Copie o comando, cole na janela (botão direito) e aperte <kbd>Enter</kbd>:
+        <div class="cmd">
+          <code id="install-cmd">irm https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/main/install.ps1 | iex</code>
+          <button data-copy="install-cmd">Copiar</button>
+        </div>
+      </li>
+      <li>Pronto. O Discord reinicia já liberado. Para atualizar, rode o mesmo comando de novo.</li>
+    </ol>
+    <details>
+      <summary>Desinstalar</summary>
+      <div class="cmd">
+        <code id="uninstall-cmd">irm https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/main/uninstall.ps1 | iex</code>
+        <button data-copy="uninstall-cmd">Copiar</button>
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Navegador (discord.com)</h2>
+    <p class="sub">Escolha uma das opções.</p>
+
+    <h3>Automático (recomendado)</h3>
+    <ol>
+      <li>Instale o <a href="https://www.tampermonkey.net/" target="_blank" rel="noopener">Tampermonkey</a>
+        (Chrome, Edge, Firefox, Opera, Brave).
+        <div class="muted">No Chrome/Edge: em <em>Gerenciar extensão</em>, ative <strong>Permitir scripts de usuário</strong>.</div></li>
+      <li>
+        <div class="row">
+          <a class="btn" href="https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/main/browser/discord-video-unlock.user.js">Instalar script</a>
+          <span class="muted">e clique em <strong>Instalar</strong> na tela que abrir.</span>
+        </div>
+      </li>
+      <li>Abra ou recarregue o Discord. Fica ativo sempre, e se atualiza sozinho.</li>
+    </ol>
+
+    <h3>Sem instalar nada</h3>
+    <ol>
+      <li>Mostre a barra de favoritos: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>B</kbd>.</li>
+      <li>
+        <div class="row">
+          <a class="btn bookmarklet" id="bookmarklet" href="#" title="Arraste para a barra de favoritos">Liberar vídeo no Discord</a>
+          <span class="muted">← <strong>arraste</strong> este botão para a barra de favoritos.</span>
+        </div>
+        <div class="muted" id="hint"></div>
+      </li>
+      <li>Com o Discord aberto, clique no favorito. Precisa clicar de novo sempre que recarregar a página.</li>
+    </ol>
+  </section>
+
+  <footer>
+    Código aberto: <a href="https://github.com/jonasbpa/discord-video-unlock">github.com/jonasbpa/discord-video-unlock</a>
+  </footer>
+</main>
+
+<script>
+  document.querySelectorAll("[data-copy]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const text = document.getElementById(btn.dataset.copy).textContent.trim();
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const range = document.createRange();
+        range.selectNodeContents(document.getElementById(btn.dataset.copy));
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+        document.execCommand("copy");
+      }
+      btn.textContent = "Copiado!";
+      btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = "Copiar"; btn.classList.remove("copied"); }, 2000);
+    });
+  });
+
+  // Single source of truth: the bookmarklet link is built from browser/bookmarklet.js.
+  const link = document.getElementById("bookmarklet");
+  const hint = document.getElementById("hint");
+  fetch("browser/bookmarklet.js", { cache: "no-cache" })
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+    .then(src => { link.href = "javascript:" + encodeURIComponent(src.trim()); })
+    .catch(() => { hint.textContent = "Não foi possível carregar o favorito. Recarregue a página."; });
+  link.addEventListener("click", e => {
+    e.preventDefault();
+    hint.textContent = "Não clique aqui: arraste o botão para a barra de favoritos e clique nele com o Discord aberto.";
+  });
+</script>
+</body>
+</html>
