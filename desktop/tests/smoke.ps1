@@ -15,7 +15,7 @@ function Check([string]$Name, [scriptblock]$Test) {
 }
 
 Check 'all scripts parse' {
-    $bad = foreach ($f in Get-ChildItem $root -Recurse -Include *.ps1, *.psm1) {
+    $bad = foreach ($f in Get-ChildItem (Split-Path $root -Parent) -Recurse -Include *.ps1, *.psm1 | Where-Object FullName -notmatch '\\\.git\\') {
         $errs = $null
         [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errs)
         if ($errs) { "$($f.Name): $($errs[0].Message)" }
