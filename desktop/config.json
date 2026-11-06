@@ -1,5 +1,9 @@
 {
-  "proxyServer": "181.39.25.196:8118",
+  "proxyServer": "",
+  "proxyListUrl": "https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/proxy-list/proxies.json",
+  "proxyListRefreshMinutes": 60,
+  "proxyListTimeoutSeconds": 8,
+  "proxyProbeTimeoutMs": 3000,
   "builds": ["Discord", "DiscordPTB", "DiscordCanary"],
   "pollIntervalMs": 500,
   "readyTimeoutSeconds": 120,

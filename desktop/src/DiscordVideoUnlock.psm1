@@ -4,6 +4,7 @@ $script:InternetSettingsKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\I
 $script:StateDir = Join-Path $env:LOCALAPPDATA 'DiscordVideoUnlock'
 $script:LogPath = Join-Path $script:StateDir 'watcher.log'
 $script:BackupPath = Join-Path $script:StateDir 'proxy-backup.json'
+$script:ProxyCachePath = Join-Path $script:StateDir 'proxies-cache.json'
 $script:LogMaxBytes = 1MB
 
 # Hidden windows are invisible to Process.MainWindowTitle, and Discord started with
@@ -12,8 +13,10 @@ if (-not ('DiscordVideoUnlock.Win32' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace DiscordVideoUnlock {
     public static class Win32 {
@@ -40,6 +43,49 @@ namespace DiscordVideoUnlock {
                 return true;
             }, IntPtr.Zero);
             return titles.ToArray();
+        }
+    }
+
+    // Probes run concurrently: Discord may already be on its splash screen, so waiting for dead
+    // proxies one by one would let it finish booting from the real IP.
+    public static class ProxyProbe {
+        public static string FirstWorking(string[] proxies, string host, int timeoutMs) {
+            var pending = new List<Task<string>>();
+            foreach (var proxy in proxies) pending.Add(Probe(proxy, host, timeoutMs));
+            var started = DateTime.UtcNow;
+            while (pending.Count > 0) {
+                var left = timeoutMs + 250 - (int)(DateTime.UtcNow - started).TotalMilliseconds;
+                if (left <= 0) return null;
+                var tasks = pending.ToArray();
+                var i = Task.WaitAny(tasks, left);
+                if (i < 0) return null;
+                if (tasks[i].Result != null) return tasks[i].Result;
+                pending.RemoveAt(i);
+            }
+            return null;
+        }
+
+        private static async Task<string> Probe(string proxy, string host, int timeoutMs) {
+            var client = new TcpClient();
+            try {
+                var sep = proxy.LastIndexOf(':');
+                var timeout = Task.Delay(timeoutMs);
+                var connect = client.ConnectAsync(proxy.Substring(0, sep), int.Parse(proxy.Substring(sep + 1)));
+                if (await Task.WhenAny(connect, timeout) != connect) return null;
+                await connect;
+                var stream = client.GetStream();
+                var request = Encoding.ASCII.GetBytes("CONNECT " + host + ":443 HTTP/1.1\r\nHost: " + host + ":443\r\n\r\n");
+                await stream.WriteAsync(request, 0, request.Length);
+                var buffer = new byte[256];
+                var read = stream.ReadAsync(buffer, 0, buffer.Length);
+                if (await Task.WhenAny(read, timeout) != read) return null;
+                var head = Encoding.ASCII.GetString(buffer, 0, await read);
+                return head.StartsWith("HTTP/1.1 200") || head.StartsWith("HTTP/1.0 200") ? proxy : null;
+            } catch (Exception) {
+                return null;
+            } finally {
+                client.Close();
+            }
         }
     }
 }
@@ -116,6 +162,68 @@ function Restore-BootProxy {
     Set-ProxyValue -KeyPath $KeyPath -Name 'ProxyEnable' -Value $snap.ProxyEnable -Kind DWord
     Remove-Item -Force $BackupPath
     $true
+}
+
+# ---------------------------------------------------------------- proxy list
+
+function ConvertFrom-DvuProxyList {
+    param([Parameter(Mandatory)][string]$Json)
+    # The list is built from third-party data and ends up in the registry: accept only ip:port.
+    @((ConvertFrom-Json $Json).proxies | ForEach-Object { [string]$_.server } |
+        Where-Object { $_ -match '^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$' })
+}
+
+function Update-DvuProxyCache {
+    param(
+        [Parameter(Mandatory)]$Config,
+        [string]$CachePath = $script:ProxyCachePath
+    )
+    $ProgressPreference = 'SilentlyContinue'
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        $json = (Invoke-WebRequest -UseBasicParsing -Uri $Config.proxyListUrl -TimeoutSec $Config.proxyListTimeoutSeconds).Content
+        if ($json -is [byte[]]) { $json = [Text.Encoding]::UTF8.GetString($json) }
+        if (-not @(ConvertFrom-DvuProxyList -Json $json).Count) { throw 'list has no valid proxies' }
+        $dir = Split-Path $CachePath -Parent
+        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force $dir | Out-Null }
+        $tmp = "$CachePath.tmp"
+        [IO.File]::WriteAllText($tmp, $json)
+        Move-Item -Force $tmp $CachePath
+        $true
+    } catch {
+        Write-DvuLog "proxy list update failed: $($_.Exception.Message)"
+        $false
+    }
+}
+
+function Select-DvuProxy {
+    <#
+      Returns the proxy to boot through, or $null. A configured proxyServer always wins and is not
+      probed, since it may use any syntax Windows accepts. Otherwise the cached list is used first:
+      downloading it on every boot would lose the race against Discord's splash screen.
+    #>
+    param(
+        [Parameter(Mandatory)]$Config,
+        [string]$CachePath = $script:ProxyCachePath
+    )
+    if ($Config.proxyServer) { return $Config.proxyServer }
+
+    $probeCache = {
+        if (-not (Test-Path $CachePath)) { return $null }
+        try {
+            $servers = @(ConvertFrom-DvuProxyList -Json ([IO.File]::ReadAllText($CachePath)))
+        } catch {
+            Write-DvuLog "proxy cache unreadable: $($_.Exception.Message)"
+            return $null
+        }
+        if (-not $servers.Count) { return $null }
+        [DiscordVideoUnlock.ProxyProbe]::FirstWorking([string[]]$servers, 'discord.com', $Config.proxyProbeTimeoutMs)
+    }
+
+    $proxy = & $probeCache
+    if ($proxy) { return $proxy }
+    if (Update-DvuProxyCache -Config $Config -CachePath $CachePath) { return (& $probeCache) }
+    $null
 }
 
 # ---------------------------------------------------------------- discord
@@ -272,10 +380,17 @@ function Invoke-Bypass {
         return $false
     }
 
-    Write-DvuLog "[$Build] bypass start (mode=$Mode, proxy=$($Config.proxyServer))"
+    # Before anything else: with no working proxy, a running Discord must not be killed for nothing.
+    $proxy = Select-DvuProxy -Config $Config
+    if (-not $proxy) {
+        Write-DvuLog "[$Build] no working proxy, Discord stays restricted"
+        return $false
+    }
+
+    Write-DvuLog "[$Build] bypass start (mode=$Mode, proxy=$proxy)"
     $result = 'error'
     try {
-        Enable-BootProxy -ProxyServer $Config.proxyServer
+        Enable-BootProxy -ProxyServer $proxy
         if ($Mode -eq 'Relaunch') { Stop-DiscordBuild -Build $Build }
         if ($Mode -ne 'Attach') { Start-Discord -Install $install -Inactive:$Inactive }
 
@@ -295,5 +410,6 @@ function Invoke-Bypass {
 }
 
 Export-ModuleMember -Function Write-DvuLog, Get-DvuConfig, Get-ProxySnapshot, Enable-BootProxy, Restore-BootProxy,
+    ConvertFrom-DvuProxyList, Update-DvuProxyCache, Select-DvuProxy,
     Resolve-DiscordInstall, Get-DiscordPids, Get-DiscordMainProcesses, Test-DiscordReady, Wait-DiscordReady,
     Start-Discord, Stop-DiscordBuild, Show-DvuToast, Stop-DvuWatcher, Invoke-Bypass

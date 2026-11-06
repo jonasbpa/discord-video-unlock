@@ -66,8 +66,16 @@ try {
     }
     & $markKnown
 
+    # Refreshed between boots only: the download must not run while the proxy is on.
+    $nextListUpdate = Get-Date
+
     while ($true) {
         Start-Sleep -Milliseconds $config.pollIntervalMs
+
+        if ((Get-Date) -ge $nextListUpdate) {
+            $minutes = if (Update-DvuProxyCache -Config $config) { $config.proxyListRefreshMinutes } else { 5 }
+            $nextListUpdate = (Get-Date).AddMinutes($minutes)
+        }
 
         $pids = Get-DiscordPids -Builds $config.builds
         $fresh = @($pids | Where-Object { -not $known.ContainsKey($_) })
