@@ -27,6 +27,19 @@ Check 'all scripts parse' {
 Import-Module (Join-Path $root 'src\DiscordVideoUnlock.psm1') -Force
 $config = Get-DvuConfig -Path (Join-Path $root 'config.json')
 
+# Keeps test noise out of the real watcher.log.
+$testLog = Join-Path $env:TEMP "dvu-smoke-log-$PID.txt"
+& (Get-Module DiscordVideoUnlock) { param($path) $script:LogPath = $path } $testLog
+
+Check 'no script reads PSScriptRoot in a parameter default' {
+    $bad = foreach ($f in Get-ChildItem (Split-Path $root -Parent) -Recurse -Include *.ps1 | Where-Object FullName -notmatch '\\\.git\\') {
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$null)
+        if ($ast.ParamBlock -and $ast.ParamBlock.Parameters | Where-Object { $_.DefaultValue -and $_.DefaultValue.Extent.Text -match 'PSScriptRoot' }) { $f.Name }
+    }
+    if ($bad) { Write-Host ($bad -join "`n") }
+    -not $bad
+}
+
 Check 'config loads with UTF-8 toast text' { $config.proxyProviders.Count -and $config.toast.title -match 'conclu.do' }
 
 $key = 'HKCU:\Software\DiscordVideoUnlockSmokeTest'
@@ -132,7 +145,7 @@ try {
     }
 } finally {
     foreach ($server in $goodProxy, $deniedProxy, $listServer) { Stop-FakeServer $server }
-    Remove-Item -Path $cache, "$cache.tmp" -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $cache, "$cache.tmp", $testLog -Force -ErrorAction SilentlyContinue
 }
 
 $install = Resolve-DiscordInstall -Build 'Discord'

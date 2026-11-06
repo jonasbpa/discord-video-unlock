@@ -11,12 +11,14 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'config.json'),
+    [string]$ConfigPath,
     [switch]$Takeover,
     [switch]$Launch
 )
 
 $ErrorActionPreference = 'Stop'
+# Not a parameter default: $PSScriptRoot is empty there when started with powershell -File on 5.1.
+if (-not $ConfigPath) { $ConfigPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'config.json' }
 Import-Module (Join-Path $PSScriptRoot 'DiscordVideoUnlock.psm1') -Force
 
 $mutex = New-Object System.Threading.Mutex($false, 'Local\DiscordVideoUnlockWatcher')
