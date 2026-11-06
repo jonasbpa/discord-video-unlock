@@ -87,29 +87,39 @@
     <h2>Navegador (discord.com)</h2>
     <p class="sub">Funciona no Chrome, Edge, Firefox e Brave com a extensão FoxyProxy. O proxy só fica ligado durante o login.</p>
 
-    <h3>Configurar (uma vez)</h3>
+    <h3>Configurar</h3>
     <ol>
       <li>Instale o FoxyProxy:
         <a href="https://chromewebstore.google.com/detail/foxyproxy/gcknhkkoolaabfmlnjonogaaifnjlfnp" target="_blank" rel="noopener">Chrome, Edge e Brave</a> ou
         <a href="https://addons.mozilla.org/firefox/addon/foxyproxy-standard/" target="_blank" rel="noopener">Firefox</a>.</li>
-      <li>Clique no ícone da extensão e abra <strong>Options</strong>. Na aba <strong>Proxies</strong>, clique em <strong>Add</strong>.</li>
-      <li>Em <strong>Type</strong>, escolha <strong>PAC</strong>. Em <strong>Title</strong>, escreva <strong>Discord</strong>. Em <strong>PAC URL</strong>, cole:
-        <div class="cmd">
-          <code id="pac-url">https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/proxy-list/proxy.pac</code>
-          <button data-copy="pac-url">Copiar</button>
+      <li>Busque um proxy:
+        <div class="row">
+          <button id="find-proxy">Buscar proxy</button>
+          <span class="muted" id="proxy-status" role="status"></span>
+        </div>
+        <div id="proxy-result" hidden>
+          <div class="cmd">
+            <code id="proxy-host"></code>
+            <button data-copy="proxy-host">Copiar</button>
+          </div>
+          <div class="cmd">
+            <code id="proxy-port"></code>
+            <button data-copy="proxy-port">Copiar</button>
+          </div>
         </div>
       </li>
-      <li>Clique em <strong>Save</strong>.</li>
+      <li>Clique no ícone da extensão e abra <strong>Options</strong>. Na aba <strong>Proxies</strong>, clique em <strong>Add</strong>.</li>
+      <li>Em <strong>Type</strong>, escolha <strong>HTTP</strong>. Em <strong>Title</strong>, escreva <strong>Discord</strong>. Cole o endereço em <strong>Hostname</strong> e a porta em <strong>Port</strong>. Clique em <strong>Save</strong>.</li>
     </ol>
 
     <h3>Usar (sempre que abrir o Discord)</h3>
     <ol>
-      <li>Clique no ícone do FoxyProxy e escolha <strong>Discord</strong>.</li>
+      <li>Clique no ícone do FoxyProxy e escolha <strong>Discord</strong>. Enquanto ele estiver ligado, todo o navegador passa pelo proxy.</li>
       <li>Abra ou recarregue o <a href="https://discord.com/app" target="_blank" rel="noopener">discord.com/app</a> e espere carregar. Pode demorar um pouco.</li>
       <li>Clique no ícone de novo e escolha <strong>Disable</strong>. <strong>Sem esse passo, o compartilhamento não funciona.</strong></li>
       <li>Entre na chamada. Se recarregar a página, repita desde o passo 1.</li>
     </ol>
-    <p class="muted">O Discord não carregou? Escolha <strong>Disable</strong> e tente de novo mais tarde: a lista de proxies é atualizada a cada 6 horas.</p>
+    <p class="muted">O Discord não carregou? Escolha <strong>Disable</strong>, busque outro proxy aqui e troque o endereço e a porta no FoxyProxy. A página não consegue testar o proxy antes, e proxies gratuitos param de funcionar com frequência.</p>
   </section>
 
   <footer>
@@ -134,6 +144,29 @@
       btn.classList.add("copied");
       setTimeout(() => { btn.textContent = "Copiar"; btn.classList.remove("copied"); }, 2000);
     });
+  });
+</script>
+<script type="module">
+  import { fetchProxy } from "./proxy-picker.mjs";
+
+  const button = document.getElementById("find-proxy");
+  const status = document.getElementById("proxy-status");
+  const result = document.getElementById("proxy-result");
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    status.textContent = "Buscando...";
+    const proxy = await fetchProxy();
+    button.disabled = false;
+    button.textContent = "Buscar outro";
+    if (!proxy) {
+      result.hidden = true;
+      status.textContent = "Não foi possível buscar um proxy agora. Tente de novo em alguns minutos.";
+      return;
+    }
+    document.getElementById("proxy-host").textContent = proxy.host;
+    document.getElementById("proxy-port").textContent = proxy.port;
+    result.hidden = false;
+    status.textContent = "País do proxy: " + proxy.country;
   });
 </script>
 </body>

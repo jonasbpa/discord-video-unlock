@@ -21,14 +21,15 @@ same command again to update. To uninstall:
 irm https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/main/uninstall.ps1 | iex
 ```
 
-**Browser (discord.com)**: use [FoxyProxy](https://github.com/foxyproxy/browser-extension) with the PAC URL
-below, as described in [Browser](#browser).
+**Browser (discord.com)**: use [FoxyProxy](https://github.com/foxyproxy/browser-extension) with a proxy
+from the install page, as described in [Browser](#browser).
 
 > **Risk.** The restriction comes from an ANPD order, and getting around it violates Discord's Terms of
 > Service; accounts can be suspended. Proxies come from public free lists and no list can make them
 > trustworthy: an operator sees your IP and which hosts you connect to (not the TLS content) and may log
-> it. Their IPs may also trigger captcha or phone checks. The Windows variant affects **all** of Windows'
-> HTTP traffic for the few seconds the proxy is on. Prefer a proxy you control.
+> it. Their IPs may also trigger captcha or phone checks. While the proxy is on, the Windows variant sends
+> **all** of Windows' HTTP traffic through it for a few seconds, and FoxyProxy sends all of the browser's.
+> Prefer a proxy you control.
 
 Based on the findings in
 [guilhermedecastrogt/unlock-screen-discord-brasil](https://github.com/guilhermedecastrogt/unlock-screen-discord-brasil).
@@ -70,20 +71,27 @@ Install location is detected automatically: both `%LOCALAPPDATA%\<Build>` and th
 `%ProgramData%\<user>\<Build>` are checked, and the newest `app-*` wins. Stable, PTB and Canary are
 watched.
 
-The proxy comes from the [published list](#proxy-list). It is cached in
-`%LOCALAPPDATA%\DiscordVideoUnlock\proxies-cache.json` and refreshed hourly. When Discord starts, all
-cached proxies are probed at once and the first to answer `CONNECT discord.com:443` is used. If none
-does, Discord is left alone (restricted) and the log says so.
+Proxies come straight from public providers, downloaded on your PC. Every 3 hours the watcher downloads
+the lists in `proxyProviders` and keeps up to 10 proxies that pass a full check, in
+`%LOCALAPPDATA%\DiscordVideoUnlock\proxies-cache.txt`, through the proxy and with anonymous requests only:
+
+- `discord.com/api/v9/gateway` answers 200 over validated TLS, which rejects TLS interception and blocked IPs;
+- Cloudflare's trace reports an exit country other than Brazil.
+
+These checks cannot tell whether an operator logs traffic. When Discord starts, the cached proxies are
+probed at once and the first to answer `CONNECT discord.com:443` is used. If none does, a new scan runs. If
+that fails too, Discord is left alone (restricted) and the log says so.
 
 ### Configuration (`%LOCALAPPDATA%\DiscordVideoUnlock\app\config.json`)
 
 | Key | Default | Meaning |
 |---|---|---|
 | `proxyServer` | empty | Your own proxy: `host:port` or any `ProxyServer` syntax Windows accepts. Set it to skip the list |
-| `proxyListUrl` | `proxy-list` branch | Published list |
-| `proxyListRefreshMinutes` | `60` | How often the cached list is refreshed |
-| `proxyListTimeoutSeconds` | `8` | List download timeout |
-| `proxyProbeTimeoutMs` | `3000` | Time allowed for the proxy probe |
+| `proxyProviders` | ProxyScrape, proxifly | URLs of plain-text lists with one `ip:port` per line |
+| `proxyRefreshMinutes` | `180` | Time between scans |
+| `proxyDownloadTimeoutSeconds` | `15` | Timeout per provider download |
+| `proxyScanSeconds` | `45` | Maximum time for a scan |
+| `proxyProbeTimeoutMs` | `3000` | Time allowed for the probe when Discord starts |
 | `builds` | all three | Builds to watch |
 | `pollIntervalMs` | `500` | Process polling interval |
 | `readyTimeoutSeconds` | `120` | Give up and restore the proxy after this |
@@ -113,46 +121,29 @@ binaries.
 ## Browser
 
 A page cannot change the browser's proxy and an installer cannot add an extension, so this variant is
-manual. [FoxyProxy](https://github.com/foxyproxy/browser-extension) (GPL-2.0) loads this PAC file:
+manual, with [FoxyProxy](https://github.com/foxyproxy/browser-extension) (GPL-2.0).
 
-```
-https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/proxy-list/proxy.pac
-```
+1. On the install page, **Buscar proxy** downloads a list from ProxyScrape (proxifly as fallback) in your
+   browser and picks one of the 20 most reliable HTTPS-capable proxies outside Brazil.
+2. Add it to FoxyProxy with type **HTTP**.
+3. Select it, then open or reload `discord.com/app`.
+4. Once Discord has loaded, select **Disable**. Screen sharing does not work while the proxy is on.
+5. Reloading the page reaches Discord from your real IP again: repeat from step 3.
 
-1. Add a proxy in FoxyProxy with type **PAC** and that URL. Only `discord.com`, `discord.gg` and
-   `discordapp.com` go through it; everything else stays direct.
-2. Select it, then open or reload `discord.com/app`.
-3. Once Discord has loaded, select **Disable**. Screen sharing does not work while the proxy is on.
-4. Reloading the page reaches Discord from your real IP again: repeat from step 2.
-
----
-
-## Proxy list
-
-`.github/workflows/update-proxies.yml` runs every 6 hours and publishes `proxies.json` and `proxy.pac` to
-the `proxy-list` branch. `proxies/update.mjs` pulls HTTP proxies from
-[proxifly](https://github.com/proxifly/free-proxy-list),
-[monosans](https://github.com/monosans/proxy-list) and [ProxyScrape](https://proxyscrape.com/), then keeps
-the 10 fastest that pass all of these through the proxy, with anonymous requests only:
-
-- `discord.com/api/v9/gateway` answers 200 over validated TLS, which rejects TLS interception and blocked IPs;
-- `gateway.discord.gg:443` accepts a tunnel;
-- Cloudflare's trace reports an exit country other than Brazil.
-
-These checks cannot tell whether an operator logs traffic. If no proxy passes, the run fails and the
-published list stays as it was. GitHub disables scheduled workflows after 60 days without repository
-activity; re-enable it in the Actions tab if the list stops updating.
+A page cannot open raw sockets, so unlike the Windows variant it cannot test the proxy first. If Discord
+does not load, get another one.
 
 ---
 
 ## Development
 
 ```powershell
-# desktop: parses every script, tests proxy backup/restore on a throwaway registry key, checks detection
+# desktop: parses every script, tests proxy backup/restore on a throwaway registry key, the provider list
+# handling against local fake servers, and detection
 powershell -NoProfile -ExecutionPolicy Bypass -File desktop\tests\smoke.ps1
 
-# proxy list: providers, selection and PAC, with no network access (Node 20+)
-node --test "proxies/tests/*.test.mjs"
+# install page proxy picker, with no network access (Node 20+)
+node --test "tests/*.test.mjs"
 
 ```
 
