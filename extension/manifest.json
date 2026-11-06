@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Discord Video Unlock",
+  "version": "0.1.0",
+  "description": "Libera câmera e compartilhamento de tela do Discord no Brasil, usando um proxy só durante o login.",
+  "permissions": ["proxy", "storage", "alarms", "webRequest", "webNavigation", "tabs"],
+  "host_permissions": [
+    "*://discord.com/*",
+    "*://*.discord.com/*",
+    "*://*.discord.gg/*",
+    "wss://*.discord.gg/*",
+    "*://discordapp.com/*",
+    "*://*.discordapp.com/*",
+    "https://www.cloudflare.com/*",
+    "https://api.proxyscrape.com/*",
+    "https://raw.githubusercontent.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Discord Video Unlock"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "discord-video-unlock@jonasbpa.github.io",
+      "strict_min_version": "128.0"
+    }
+  }
+}

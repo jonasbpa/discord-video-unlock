@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Discord Video Unlock</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff; --text: #1d2130; --muted: #5d6475; --line: #e3e6ef; --accent: #5865f2; --accent-text: #ffffff;
+    --warn-bg: #fff6e0; --warn-line: #f0c75e; --warn-text: #5c4400;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #171a23; --text: #e8eaf1; --muted: #9aa1b2; --line: #272b38; --accent: #7983f5; --accent-text: #0f1117;
+      --warn-bg: #2a2310; --warn-line: #6b5717; --warn-text: #f0d68a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 300px; padding: 14px; background: var(--bg); color: var(--text);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 15px; margin: 0 0 10px; }
+  p { margin: 0 0 10px; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 12px 0; }
+  button { width: 100%; appearance: none; border: 0; cursor: pointer; background: var(--accent); color: var(--accent-text);
+    font: 600 14px/1 inherit; font-family: inherit; padding: 10px 12px; border-radius: 8px; }
+  button:disabled { opacity: .6; cursor: default; }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  .warn { background: var(--warn-bg); border: 1px solid var(--warn-line); color: var(--warn-text);
+    border-radius: 8px; padding: 8px 10px; font-size: 12.5px; margin: 0 0 10px; }
+  details { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+  input[type=text] { width: 100%; margin: 8px 0 4px; padding: 8px; border-radius: 8px; border: 1px solid var(--line);
+    background: transparent; color: inherit; font: 13px ui-monospace, Consolas, monospace; }
+</style>
+</head>
+<body>
+  <h1>Discord Video Unlock</h1>
+  <div class="warn" id="blocked" hidden>Outra extensão de proxy, como o FoxyProxy, está no controle. Desative-a para esta funcionar.</div>
+  <p id="status" role="status"></p>
+  <button id="reload">Abrir ou recarregar o Discord</button>
+  <div class="row">
+    <label for="enabled">Ativar ao abrir o Discord</label>
+    <input type="checkbox" id="enabled">
+  </div>
+  <p class="muted">Ping alto na chamada? Nas configurações do canal de voz, troque <strong>Substituição de região</strong> de automático para Brasil.</p>
+  <details>
+    <summary>Usar meu próprio proxy</summary>
+    <input type="text" id="own-proxy" placeholder="ip:porta" spellcheck="false" autocomplete="off">
+    <p class="muted" id="own-proxy-hint">Vazio usa os proxies públicos gratuitos.</p>
+  </details>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
