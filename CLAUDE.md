@@ -16,15 +16,20 @@ the IP seen at login; see README.md for user-facing docs.
   - `src/watcher.ps1` - single-instance polling loop. `-Takeover` restarts an already booted Discord
     (logon + install), `-Launch` opens it if closed (install only).
   - `install.ps1` / `uninstall.ps1` - HKCU Run entry via `conhost --headless`; replace/stop watcher.
-  - `config.json` - proxy, builds, timings, toast text.
+  - `config.json` - proxy list URL or own proxy, builds, timings, toast text.
+- `proxies/` - Node, no dependencies. `update.mjs` builds `proxies.json` and `proxy.pac` from free
+  providers (`lib.mjs`) after live checks (`check.mjs`).
+- `.github/workflows/update-proxies.yml` - publishes both files to the `proxy-list` branch every 6 hours.
+- Browser: no code of ours. FoxyProxy loads `proxy.pac`; steps live on the install page.
 
 ## Commands
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File desktop\tests\smoke.ps1
+node --test "proxies/tests/*.test.mjs"   # Node 24 needs a glob, not a folder
 ```
 
-Run before committing. Must not touch the real proxy settings, Discord or an account.
+Run both before committing. Neither may touch the real proxy settings, Discord or an account.
 
 ## Rules
 
@@ -40,8 +45,15 @@ Run before committing. Must not touch the real proxy settings, Discord or an acc
   `-BackupPath` for that.
 - Desktop must never leave the proxy on: every enable goes through `Invoke-Bypass`'s `finally`, and an
   existing backup file is never overwritten (it is the only copy of the user's settings after a crash).
+- Provider data is untrusted. Only validated `ip:port` values may reach the PAC or the registry, on both
+  the Node side and in `ConvertFrom-DvuProxyList`.
+- The PAC has no `DIRECT` fallback for Discord hosts: a silent login from the real IP restores the block.
+- The list is never downloaded while the proxy is on, and never at boot if a cached proxy answers.
 
 ## Gotchas
+
+- The proxy must be off after login: screen sharing failed in a real browser test while it stayed on.
+- `discord.com/cdn-cgi/trace` answers 403; the country check uses `www.cloudflare.com`.
 
 - The active install may be `%ProgramData%\<user>\Discord` with a stale copy in `%LOCALAPPDATA%`;
   `Resolve-DiscordInstall` picks the newest `app-*`.

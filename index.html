@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Discord Video Unlock</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235865f2'/%3E%3Cpath d='M9 11h10v10H9z M20 14l5-3v10l-5-3z' fill='white'/%3E%3C/svg%3E">
-<meta name="description" content="Libera câmera e compartilhamento de tela do Discord no Brasil, no Windows.">
+<meta name="description" content="Libera câmera e compartilhamento de tela do Discord no Brasil, no Windows e no navegador.">
 <style>
   :root {
     --bg: #f6f7fb; --card: #ffffff; --text: #1d2130; --muted: #5d6475; --line: #e3e6ef;
@@ -55,8 +55,10 @@
 
   <div class="warn">
     <strong>Leia antes:</strong> a restrição vem de uma determinação da ANPD e contornar ela viola os Termos do Discord.
-    Sua conta pode ser suspensa. Use por sua conta e risco. No Windows, o tráfego da internet passa por um proxy público
-    durante os poucos segundos em que o Discord abre.
+    Sua conta pode ser suspensa. Use por sua conta e risco. Os proxies são públicos e gratuitos: quem opera um deles vê seu IP
+    e os sites que você acessa por ele, mas não o conteúdo, que continua criptografado. O Discord também pode pedir captcha
+    ou confirmação por telefone. No Windows, o tráfego da internet passa pelo proxy durante os poucos segundos em que o
+    Discord abre.
   </div>
 
   <section class="card">
@@ -79,6 +81,35 @@
         <button data-copy="uninstall-cmd">Copiar</button>
       </div>
     </details>
+  </section>
+
+  <section class="card">
+    <h2>Navegador (discord.com)</h2>
+    <p class="sub">Funciona no Chrome, Edge, Firefox e Brave com a extensão FoxyProxy. O proxy só fica ligado durante o login.</p>
+
+    <h3>Configurar (uma vez)</h3>
+    <ol>
+      <li>Instale o FoxyProxy:
+        <a href="https://chromewebstore.google.com/detail/foxyproxy/gcknhkkoolaabfmlnjonogaaifnjlfnp" target="_blank" rel="noopener">Chrome, Edge e Brave</a> ou
+        <a href="https://addons.mozilla.org/firefox/addon/foxyproxy-standard/" target="_blank" rel="noopener">Firefox</a>.</li>
+      <li>Clique no ícone da extensão e abra <strong>Options</strong>. Na aba <strong>Proxies</strong>, clique em <strong>Add</strong>.</li>
+      <li>Em <strong>Type</strong>, escolha <strong>PAC</strong>. Em <strong>Title</strong>, escreva <strong>Discord</strong>. Em <strong>PAC URL</strong>, cole:
+        <div class="cmd">
+          <code id="pac-url">https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/proxy-list/proxy.pac</code>
+          <button data-copy="pac-url">Copiar</button>
+        </div>
+      </li>
+      <li>Clique em <strong>Save</strong>.</li>
+    </ol>
+
+    <h3>Usar (sempre que abrir o Discord)</h3>
+    <ol>
+      <li>Clique no ícone do FoxyProxy e escolha <strong>Discord</strong>.</li>
+      <li>Abra ou recarregue o <a href="https://discord.com/app" target="_blank" rel="noopener">discord.com/app</a> e espere carregar. Pode demorar um pouco.</li>
+      <li>Clique no ícone de novo e escolha <strong>Disable</strong>. <strong>Sem esse passo, o compartilhamento não funciona.</strong></li>
+      <li>Entre na chamada. Se recarregar a página, repita desde o passo 1.</li>
+    </ol>
+    <p class="muted">O Discord não carregou? Escolha <strong>Disable</strong> e tente de novo mais tarde: a lista de proxies é atualizada a cada 6 horas.</p>
   </section>
 
   <footer>
