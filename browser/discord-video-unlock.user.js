@@ -1,8 +1,11 @@
 // ==UserScript==
 // @name         Discord Video Unlock (web)
 // @namespace    discord-video-unlock
-// @version      0.1.0
+// @version      0.1.1
 // @description  Keeps the 2026-08-video-guard experiment on its control bucket on every gateway connection.
+// @homepageURL  https://github.com/jonasbpa/discord-video-unlock
+// @updateURL    https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/main/browser/discord-video-unlock.user.js
+// @downloadURL  https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/main/browser/discord-video-unlock.user.js
 // @match        https://discord.com/*
 // @match        https://ptb.discord.com/*
 // @match        https://canary.discord.com/*
