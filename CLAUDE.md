@@ -17,8 +17,12 @@ the IP seen at login; see README.md for user-facing docs.
     (logon + install), `-Launch` opens it if closed (install only).
   - `install.ps1` / `uninstall.ps1` - HKCU Run entry via `conhost --headless`; replace/stop watcher.
   - `config.json` - provider URLs or own proxy, builds, timings, toast text.
-- `proxy-picker.mjs` - used by `index.html`: fetches a provider list in the visitor's browser and picks
-  a proxy to paste into FoxyProxy. There is no browser code of ours beyond this.
+- `extension/` - MV3 browser extension, no dependencies, no build step. Bump `version` in `manifest.json`
+  on every change.
+  - `lib.js` - pure: providers, ranking, PAC, URL checks.
+  - `controller.js` - login state machine with injected browser APIs (tested in `tests/`).
+  - `background.js` - wires `controller.js` to the browser, including the Firefox `proxy.onRequest` path.
+  - `popup.html` / `popup.js` - pt-BR status and settings.
 
 ## Commands
 
@@ -44,13 +48,17 @@ Run both before committing. Neither may touch the real proxy settings, Discord o
 - Desktop must never leave the proxy on: every enable goes through `Invoke-Bypass`'s `finally`, and an
   existing backup file is never overwritten (it is the only copy of the user's settings after a crash).
 - Clients fetch proxies directly from public providers. Do not add a server or a CI job that builds a list.
-- Provider data is untrusted. Only validated public `ip:port` values may reach the page or the registry
-  (`proxy-picker.mjs`, `ConvertFrom-DvuProxyText`). Private addresses must never be probed.
-- Provider downloads and scans never run while the proxy is on.
+- Provider data is untrusted. Only validated public `ip:port` values may reach a PAC or the registry
+  (`extension/lib.js`, `ConvertFrom-DvuProxyText`). Private addresses must never be probed.
+- Desktop provider downloads and scans never run while the proxy is on.
+- The extension must never leave the proxy on: every path out of `arm` ends in `disarm`, with an alarm as a
+  backstop, and browser start clears it. The PAC has no `DIRECT` fallback for Discord hosts.
 
 ## Gotchas
 
-- The proxy must be off after login: screen sharing failed in a real browser test while it stayed on.
+- High voice ping after a proxied login is usually region, not the proxy path: with a channel's region on
+  automatic, Discord picks a voice server near the proxy's location.
+- `wss://remote-auth-gateway.discord.gg` is the QR login socket, not the gateway; `isGatewayUrl` excludes it.
 - `discord.com/cdn-cgi/trace` answers 403; the country check uses `www.cloudflare.com`.
 
 - The active install may be `%ProgramData%\<user>\Discord` with a stale copy in `%LOCALAPPDATA%`;

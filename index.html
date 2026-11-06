@@ -58,7 +58,7 @@
     Sua conta pode ser suspensa. Use por sua conta e risco. Os proxies são públicos e gratuitos: quem opera um deles vê seu IP
     e os sites que você acessa por ele, mas não o conteúdo, que continua criptografado. O Discord também pode pedir captcha
     ou confirmação por telefone. No Windows, o tráfego da internet passa pelo proxy durante os poucos segundos em que o
-    Discord abre.
+    Discord abre. No navegador, só o tráfego do Discord passa por ele, durante o login.
   </div>
 
   <section class="card">
@@ -85,41 +85,32 @@
 
   <section class="card">
     <h2>Navegador (discord.com)</h2>
-    <p class="sub">Funciona no Chrome, Edge, Firefox e Brave com a extensão FoxyProxy. O proxy só fica ligado durante o login.</p>
-
-    <h3>Configurar</h3>
+    <p class="sub">Extensão para Edge, Chrome e Brave. Depois de instalada, é só abrir o Discord: ela liga o proxy no login e desliga sozinha.</p>
     <ol>
-      <li>Instale o FoxyProxy:
-        <a href="https://chromewebstore.google.com/detail/foxyproxy/gcknhkkoolaabfmlnjonogaaifnjlfnp" target="_blank" rel="noopener">Chrome, Edge e Brave</a> ou
-        <a href="https://addons.mozilla.org/firefox/addon/foxyproxy-standard/" target="_blank" rel="noopener">Firefox</a>.</li>
-      <li>Busque um proxy:
+      <li>
         <div class="row">
-          <button id="find-proxy">Buscar proxy</button>
-          <span class="muted" id="proxy-status" role="status"></span>
-        </div>
-        <div id="proxy-result" hidden>
-          <div class="cmd">
-            <code id="proxy-host"></code>
-            <button data-copy="proxy-host">Copiar</button>
-          </div>
-          <div class="cmd">
-            <code id="proxy-port"></code>
-            <button data-copy="proxy-port">Copiar</button>
-          </div>
+          <a class="btn" href="https://github.com/jonasbpa/discord-video-unlock/archive/refs/heads/main.zip">Baixar extensão</a>
+          <span class="muted">e descompacte o arquivo em uma pasta que você não vá apagar.</span>
         </div>
       </li>
-      <li>Clique no ícone da extensão e abra <strong>Options</strong>. Na aba <strong>Proxies</strong>, clique em <strong>Add</strong>.</li>
-      <li>Em <strong>Type</strong>, escolha <strong>HTTP</strong>. Em <strong>Title</strong>, escreva <strong>Discord</strong>. Cole o endereço em <strong>Hostname</strong> e a porta em <strong>Port</strong>. Clique em <strong>Save</strong>.</li>
+      <li>Abra a página de extensões. Digite na barra de endereço:
+        <div class="cmd">
+          <code id="ext-edge">edge://extensions</code>
+          <button data-copy="ext-edge">Copiar</button>
+        </div>
+        <div class="muted">No Chrome: <strong>chrome://extensions</strong>. No Brave: <strong>brave://extensions</strong>.</div>
+      </li>
+      <li>Ative o <strong>Modo de desenvolvedor</strong>.</li>
+      <li>Clique em <strong>Carregar sem compactação</strong> e escolha a pasta <strong>extension</strong>, que está dentro da pasta que você descompactou.</li>
+      <li>Abra ou recarregue o <a href="https://discord.com/app" target="_blank" rel="noopener">discord.com/app</a>. Quando o ícone da extensão mostrar <strong>ok</strong>, o vídeo está liberado.</li>
     </ol>
+    <p class="muted">Se você usa FoxyProxy ou outra extensão de proxy, desative-a: só uma pode controlar o proxy por vez. Se o ícone mostrar <strong>F5</strong>, recarregue a página do Discord. Para atualizar, baixe de novo, substitua a pasta e clique em recarregar na página de extensões.</p>
+  </section>
 
-    <h3>Usar (sempre que abrir o Discord)</h3>
-    <ol>
-      <li>Clique no ícone do FoxyProxy e escolha <strong>Discord</strong>. Enquanto ele estiver ligado, todo o navegador passa pelo proxy.</li>
-      <li>Abra ou recarregue o <a href="https://discord.com/app" target="_blank" rel="noopener">discord.com/app</a> e espere carregar. Pode demorar um pouco.</li>
-      <li>Clique no ícone de novo e escolha <strong>Disable</strong>. <strong>Sem esse passo, o compartilhamento não funciona.</strong></li>
-      <li>Entre na chamada. Se recarregar a página, repita desde o passo 1.</li>
-    </ol>
-    <p class="muted">O Discord não carregou? Escolha <strong>Disable</strong>, busque outro proxy aqui e troque o endereço e a porta no FoxyProxy. A página não consegue testar o proxy antes, e proxies gratuitos param de funcionar com frequência.</p>
+  <section class="card">
+    <h2>Ping alto na chamada?</h2>
+    <p class="sub">Com a região do canal no automático, o Discord pode escolher um servidor de voz perto do proxy, e não perto de você.</p>
+    <p>Nas configurações do canal de voz, troque <strong>Substituição de região</strong> de automático para <strong>Brasil</strong>. Isso exige permissão no canal.</p>
   </section>
 
   <footer>
@@ -144,29 +135,6 @@
       btn.classList.add("copied");
       setTimeout(() => { btn.textContent = "Copiar"; btn.classList.remove("copied"); }, 2000);
     });
-  });
-</script>
-<script type="module">
-  import { fetchProxy } from "./proxy-picker.mjs";
-
-  const button = document.getElementById("find-proxy");
-  const status = document.getElementById("proxy-status");
-  const result = document.getElementById("proxy-result");
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    status.textContent = "Buscando...";
-    const proxy = await fetchProxy();
-    button.disabled = false;
-    button.textContent = "Buscar outro";
-    if (!proxy) {
-      result.hidden = true;
-      status.textContent = "Não foi possível buscar um proxy agora. Tente de novo em alguns minutos.";
-      return;
-    }
-    document.getElementById("proxy-host").textContent = proxy.host;
-    document.getElementById("proxy-port").textContent = proxy.port;
-    result.hidden = false;
-    status.textContent = "País do proxy: " + proxy.country;
   });
 </script>
 </body>

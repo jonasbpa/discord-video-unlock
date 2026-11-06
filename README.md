@@ -21,15 +21,14 @@ same command again to update. To uninstall:
 irm https://raw.githubusercontent.com/jonasbpa/discord-video-unlock/main/uninstall.ps1 | iex
 ```
 
-**Browser (discord.com)**: use [FoxyProxy](https://github.com/foxyproxy/browser-extension) with a proxy
-from the install page, as described in [Browser](#browser).
+**Browser (discord.com)**: load the extension in `extension/`, as described in [Browser](#browser).
 
 > **Risk.** The restriction comes from an ANPD order, and getting around it violates Discord's Terms of
 > Service; accounts can be suspended. Proxies come from public free lists and no list can make them
 > trustworthy: an operator sees your IP and which hosts you connect to (not the TLS content) and may log
 > it. Their IPs may also trigger captcha or phone checks. While the proxy is on, the Windows variant sends
-> **all** of Windows' HTTP traffic through it for a few seconds, and FoxyProxy sends all of the browser's.
-> Prefer a proxy you control.
+> **all** of Windows' HTTP traffic through it for a few seconds. The extension only sends Discord's, during
+> login. Prefer a proxy you control.
 
 Based on the findings in
 [guilhermedecastrogt/unlock-screen-discord-brasil](https://github.com/guilhermedecastrogt/unlock-screen-discord-brasil).
@@ -120,18 +119,42 @@ binaries.
 
 ## Browser
 
-A page cannot change the browser's proxy and an installer cannot add an extension, so this variant is
-manual, with [FoxyProxy](https://github.com/foxyproxy/browser-extension) (GPL-2.0).
+`extension/` is a Manifest V3 extension with no dependencies. It is not in any store yet, so it is loaded
+unpacked: enable developer mode in `edge://extensions`, choose **Load unpacked** and select the folder.
+Tested on Edge. It also has a Firefox code path (`proxy.onRequest`) that has not been tested.
 
-1. On the install page, **Buscar proxy** downloads a list from ProxyScrape (proxifly as fallback) in your
-   browser and picks one of the 20 most reliable HTTPS-capable proxies outside Brazil.
-2. Add it to FoxyProxy with type **HTTP**.
-3. Select it, then open or reload `discord.com/app`.
-4. Once Discord has loaded, select **Disable**. Screen sharing does not work while the proxy is on.
-5. Reloading the page reaches Discord from your real IP again: repeat from step 3.
+### How it works
 
-A page cannot open raw sockets, so unlike the Windows variant it cannot test the proxy first. If Discord
-does not load, get another one.
+1. **Opening Discord** (`/app`, `/channels`, `/login`...) turns the proxy on through a PAC that only routes
+   `discord.com`, `discord.gg`, `discordapp.com` and the country check host. Voice, CDN and every other site
+   stay direct.
+2. **A chain of up to 8 proxies** is applied, so the browser skips dead ones by itself. The chain is checked
+   with anonymous requests: `discord.com/api/v9/gateway` must answer over valid TLS and Cloudflare's trace
+   must report an exit outside Brazil. If it fails, the next batch is tried, up to 12.
+3. **The gateway handshake** (`101` on `wss://gateway*.discord.gg`) starts a 10-second timer, then the proxy
+   goes off and the icon shows `ok`.
+
+A working chain is saved for the next load, and one is searched for in advance when the browser starts.
+Proxies come straight from ProxyScrape and proxifly, downloaded in your browser and refreshed every 3 hours.
+Reliable ones come first, then the nearest countries. If nothing works, the proxy goes off and the icon shows
+`x`. A 2-minute alarm turns it off if anything else goes wrong.
+
+| Icon | Meaning |
+|---|---|
+| `...` | Logging in through the proxy |
+| `ok` | Unlocked, proxy off |
+| `x` | No proxy worked |
+| `F5` | Discord reconnected from your real IP: reload the page |
+| `off` | Disabled in the popup |
+
+The popup can also set your own proxy (`ip:port`).
+
+### Limits
+
+- Logging in on an open `/login` page can take longer than the 2-minute alarm. Reload after logging in.
+- With a channel's region on automatic, Discord can pick a voice server near the proxy, which means high
+  ping. Set **Region Override** to Brazil in the channel settings.
+- Only one extension can control the proxy. The popup warns if another one, such as FoxyProxy, holds it.
 
 ---
 
@@ -142,7 +165,7 @@ does not load, get another one.
 # handling against local fake servers, and detection
 powershell -NoProfile -ExecutionPolicy Bypass -File desktop\tests\smoke.ps1
 
-# install page proxy picker, with no network access (Node 20+)
+# extension: proxy selection and the login state machine, with no network access (Node 22+)
 node --test "tests/*.test.mjs"
 
 ```
